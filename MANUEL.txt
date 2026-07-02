@@ -1,0 +1,694 @@
+===============================================================================
+                MINI DICTAPHONE V1 - MANUEL UTILISATEUR
+                MINI DICTAPHONE V1 - USER MANUAL (EN below)
+                            by ponpon 76
+                Code réalisé par Coder (GLM-5.2, ZCode)
+===============================================================================
+
+##############################################################################
+#                             VERSION FRANÇAISE                              #
+##############################################################################
+
+
+1. CE QUE FAIT LE LOGICIEL
+-------------------------------------------------------------------------------
+Un petit utilitaire ultra-léger de dictée vocale. Fenêtre flottante qui reste
+toujours au-dessus des autres fenêtres. Reconnaissance vocale 100% locale en
+français (ou autre langue) via Whisper. Aucune donnée ne quitte votre PC.
+
+  - Fenêtre flottante toujours au premier plan (style PureRef).
+  - Vous parlez dans le micro -> le texte transcrit s'affiche à l'écran.
+  - Sauvegarde automatique de chaque discussion, classée par jour.
+  - Indicateur visuel de niveau micro (VU meter).
+  - Choix de la langue d'interface (FR, EN, ES, PT, DE, IT) au 1er lancement.
+  - Navigation dans l'historique des notes (précédent / suivant).
+  - Possibilité de joindre des fichiers à une note.
+  - Gestionnaire de modèles Whisper (téléchargement en 1 clic depuis l'app).
+  - Système de mise à jour (application + exécutable Whisper).
+  - Mémorisation de la position/taille de la fenêtre.
+  - Raccourcis clavier globaux.
+
+
+2. INSTALLATION (à faire une seule fois)
+-------------------------------------------------------------------------------
+
+>>> ÉTAPE 1 : Installer le programme lui-même <<<
+  - Double-cliquez sur INSTALLATEUR.bat
+  - Choisissez le dossier d'installation (ex: D:\Outils, ou C:\)
+  - Le programme s'installe dans <dossier>\MiniDictaphone
+  - Un raccourci "Mini Dictaphone V1" est créé sur le Bureau.
+
+  NOTE : le raccourci est ÉPINGLABLE. Sur Windows 11, clic droit dessus ->
+  "Épingler à la barre des tâches" fonctionne (le raccourci pointe vers
+  electron.exe, pas vers un .bat).
+
+  NOTE : si une installation existe déjà à l'endroit choisi, l'installateur vous
+  propose : [1] Remplacer (garde vos sauvegardes) / [2] Tout supprimer /
+  [3] Annuler. Fini les dossiers imbriqués.
+
+>>> ÉTAPE 2 : Node.js (AUTOMATIQUE) <<<
+  L'installateur (ÉTAPE 1) détecte Node.js et l'installe AUTOMATIQUEMENT si
+  nécessaire (version LTS officielle, installation silencieuse). Une fenêtre
+  Windows peut demander votre autorisation (clic "Oui").
+  Au premier lancement du dictaphone, Electron se télécharge automatiquement.
+  (Si l'auto-install échoue, vous pouvez installer Node.js manuellement :
+   https://nodejs.org/ — version LTS — puis relancer l'installateur.)
+
+>>> ÉTAPE 3 : Installer le moteur Whisper (depuis l'app, recommandé) <<<
+  - Lancez le Mini Dictaphone V1.
+  - Cliquez sur l'icône [⚙️] en haut à droite.
+  - Dans "Modèles", cliquez "Télécharger" sur le modèle de votre choix.
+    (small = bon équilibre qualité/légèreté, recommandé)
+  - ATTENTION : il faut AUSSI main.exe. Voir l'étape 4.
+
+>>> ÉTAPE 4 : Installer main.exe (l'exécutable Whisper) <<<
+  - Téléchargez cli.zip : https://github.com/Const-me/Whisper/releases/latest
+    (PAS "WhisperDesktop.zip" ! Prenez bien "cli.zip")
+  - Clic droit sur cli.zip -> "Extraire tout..."
+  - Dossier cible : <dossier installation>\MiniDictaphone\Whisper
+  - Cela y déposera main.exe et ses fichiers dll.
+
+>>> ÉTAPE 5 : Installer le correcteur d'orthographe (OPTIONNEL) <<<
+  Le correcteur n'est PAS obligatoire : le dictaphone marche sans.
+  Pour l'activer : ouvrez ⚙️ -> ligne "Correcteur" -> bouton "Installer".
+  L'app télécharge automatiquement Java (Temurin 21) + LanguageTool (~350 Mo)
+  dans le dossier Correcteur/, puis démarre le serveur (localhost:8081).
+  100% local : aucune donnée ne part vers internet.
+
+  ⚠️ SI LE TÉLÉCHARGEMENT ÉCHOUE (URL modifiée, serveur down) :
+  Vous pouvez installer manuellement les 2 composants :
+    1) Java (JDK 17 ou plus, version portable recommandée) :
+       - Source officielle : https://adoptium.net/temurin/releases/
+       - Prenez la version "JDK", Windows x64, format .zip (portable).
+       - Extrayez le contenu dans : MiniDictaphone\Correcteur\java\
+         (le fichier java.exe doit se trouver dans
+          MiniDictaphone\Correcteur\java\bin\java.exe)
+
+    2) LanguageTool (zip contenant languagetool-server.jar) :
+       - Source officielle : https://languagetool.org/download/
+       - Téléchargez "LanguageTool-stable.zip" (la version stable).
+       - Extrayez le contenu dans : MiniDictaphone\Correcteur\LanguageTool\
+         (le fichier languagetool-server.jar doit se trouver directement
+          dans MiniDictaphone\Correcteur\LanguageTool\languagetool-server.jar)
+
+  Une fois les 2 composants en place, relancez l'app puis ⚙️ -> "Démarrer".
+
+>>> NOTE TRANSPORTABILITÉ (clé USB) <<<
+  TOUT est contenu dans un seul dossier (par défaut C:\MiniDictaphone) :
+  le programme, le moteur Whisper, les modèles, le correcteur d'orthographe
+  (Java + LanguageTool), et vos sauvegardes. Aucun fichier n'est dispersé
+  ailleurs sur le PC (ni dans Program Files, ni dans le registre, ni dans
+  les variables d'environnement système).
+  => Vous pouvez copier tout le dossier MiniDictaphone sur une clé USB et
+     le lancer sur un autre PC (sous réserve que Node.js y soit installé),
+     sans aucune réinstallation. Vos modèles, votre correcteur et vos
+     sauvegardes voyagent avec vous.
+
+
+3. PREMIER LANCEMENT (choix de la langue)
+-------------------------------------------------------------------------------
+Au tout premier lancement, une fenêtre vous demande de choisir la langue de
+l'interface parmi 6 : Français, English, Español, Português, Deutsch, Italiano.
+
+Ce choix est définitif pour l'interface, mais vous pouvez le changer plus tard
+via le panneau [⚙️] -> menu déroulant en haut du panneau.
+
+Une fois la langue choisie, l'écran affiche :
+  - "SYSTÈME PRÊT" si Whisper est bien installé (main.exe + un modèle).
+  - "il manque..." sinon, avec les instructions.
+
+
+4. L'INTERFACE
+-------------------------------------------------------------------------------
+
+  Barre du haut :
+    [🎙️ Mini Dictaphone V1]    [🔊] Paramètres son de Windows
+    [⚙️] Mises à jour, Modèles, Langue   [➖] Réduire  [⬜] Agrandir  [✕] Fermer
+    (Un point jaune 🟡 apparaît si une MAJ app est disponible.)
+
+  Zone centrale :
+    Grand écran vert = texte transcrit (éditable à la main).
+
+  Sous l'écran :
+    [Barre VU]       Niveau du micro pendant l'enregistrement.
+    [◀] [info] [▶]   Navigation dans l'historique des notes.
+    [ANNULER] [ON/OFF]  Contrôles du micro.
+    [CLEAR][COPIER][📂][📎×N]  Actions sur le texte.
+
+  Barre de config (bas) :
+    Langue de transcription : [déroulant FR/EN/ES/DE/IT/Auto]
+    Modèle : <nom du modèle actif>
+
+  Pour déplacer la fenêtre : cliquez-glissez sur la barre du haut.
+
+
+5. UTILISATION - DICTÉE VOCALE
+-------------------------------------------------------------------------------
+1. Cliquez [ON/OFF] (ou Ctrl+Shift+M). Le bouton devient rouge.
+2. La barre VU réagit à votre voix : confirme que le micro capte.
+3. Parlez normalement dans le micro.
+4. Cliquez [ON/OFF] (ou Ctrl+Shift+M) pour arrêter.
+5. "Transcription en cours..." apparaît, puis le texte s'affiche et se sauve.
+
+IMPORTANT : la transcription n'est PAS en temps réel. Le texte apparaît APRÈS
+que vous avez coupé le micro (plus simple et plus robuste, moins d'erreurs).
+
+
+5bis. POUR UNE MEILLEURE TRANSCRIPTION (conseils pratiques)
+-------------------------------------------------------------------------------
+La qualité du texte dépend autant de l'audio que du modèle Whisper. Si vous
+constatez des erreurs (mots déformés, fins de mots avalées), ces 3 leviers
+améliorent nettement le résultat :
+
+  1) LE MODÈLE WHISPER (gain le plus important)
+     - tiny/base   : beaucoup d'erreurs en français (déconseillé).
+     - small (⭐)   : bon équilibre qualité/VRAM (recommandé par défaut).
+     - medium      : très bon en français, mais gourmand en VRAM (~5 Go).
+     - large-v3    : excellent, mais très lourd (~10 Go de VRAM).
+     Changez de modèle dans ⚙️ -> tableau comparatif. Vérifiez votre VRAM
+     (ligne "GPU détecté") avant de passer à medium/large : si le total des
+     logiciels lourds (jeux, IA) dépasse votre VRAM, le PC rame ou plante.
+
+  2) LA POSITION DU MICRO (le plus simple, gratuit)
+     - Placez le micro à 15-30 cm de la bouche (pas plus loin).
+     - Évitez de tourner la tête pendant la dictée.
+     - Coupez les sources de bruit : ventilateur, fenêtre ouverte, musique.
+
+  3) LA PRONONCIATION
+     - Articulez les fins de mots ("naiN", "enfanT", "j'aI").
+     - Ralentissez légèrement : la parole rapide génère plus d'erreurs.
+     - Faites de courtes pauses entre les phrases.
+
+  RECOMMANDATION : commencez par le micro (rapprochez-vous, coupez le bruit)
+  et le modèle small. Si les erreurs persistent, montez à medium SI votre VRAM
+  le permet. Le correcteur d'orthographe (⚙️) corrige l'orthographe et la
+  grammaire, mais il NE PEUT PAS corriger un mauvais mot entendu par Whisper
+  (ex : "enant" au lieu de "un nain" : c'est Whisper qui a mal entendu, pas
+  une faute d'orthographe).
+
+
+6. RACCOURCIS CLAVIER (globaux - marchent même si une autre app a le focus)
+-------------------------------------------------------------------------------
+  Ctrl + Shift + M    Bascule le micro ON / OFF
+  Ctrl + Shift + C    Copie tout le texte
+  Ctrl + Shift + E    Efface l'écran (E comme Effacer)
+
+
+7. SAUVEGARDES & HISTORIQUE
+-------------------------------------------------------------------------------
+- Sauvegarde auto : à l'arrêt du micro + à la fermeture de l'app.
+- Organisation par jour :
+    Sauvegardes\2026-07-01\15-30.txt  16-12.txt  ...
+- Anti-collision : si 2 notes commencent la même minute -> suffixe -2, -3.
+- [CLEAR] supprime la note courante du disque.
+- Historique navigable : [◀] [▶] pour parcourir, éditer, re-sauvegarder.
+
+
+8. INSERTION DE FICHIER (bouton 📎)
+-------------------------------------------------------------------------------
+Le bouton 📎 INSÈRE LE CONTENU d'un fichier directement à la suite du texte
+(pour ensuite tout copier d'un coup).
+
+FORMATS SUPPORTÉS :
+  • Texte     : .txt, .json, .md, .csv, .js, .py, .html, .css, .xml, .log
+  • Excel     : .xlsx, .xls, .ods (toutes les feuilles converties en tableau)
+  • Word      : .docx uniquement
+                ⚠️ LIMITATION : .doc (Word avant 2007) NON supporté.
+                ⚠️ LIMITATION : la mise en forme (gras, couleurs) est perdue,
+                  seul le texte brut est extrait.
+  • PDF       : .pdf (texte extractible uniquement)
+                ⚠️ LIMITATION : les PDF scannés (photos de documents) ne
+                  contiennent pas de texte extractible -> affiche une erreur.
+                  Seuls les PDF générés par ordinateur fonctionnent.
+
+FORMATS NON SUPPORTÉS : images (.jpg, .png), audio, vidéo, exécutables.
+
+
+8bis. TRADUCTION VERS L'ANGLAIS (bouton 🌐)
+-------------------------------------------------------------------------------
+Le bouton 🌐 TRADUIRE arme/désarme le mode traduction (style bouton AUDIO).
+Quand il est armé (rouge clignotant), chaque dictée est traduite vers l'anglais
+automatiquement par Whisper (option native --translate, zéro dépendance).
+
+  Exemple : vous dictez en français "bonjour comment ça va" -> le texte
+  affiché est "hello how are you".
+
+  ⚠️ LIMITATION : Whisper ne traduit QUE vers l'anglais (limite technique).
+  Pour une traduction vers d'autres langues, il faudrait une librairie
+  supplémentaire (Argos Translate, ~500 Mo) — non intégrée pour l'instant.
+
+  Usage : remplir des formulaires/prompt sur des sites anglais, communiquer
+  avec des personnes qui ne parlent pas votre langue, etc.
+
+
+8ter. CORRECTION D'ORTHOGRAPHE (LanguageTool local)
+-------------------------------------------------------------------------------
+Le dictaphone intègre un correcteur d'orthographe 100% local (LanguageTool).
+Voir l'ÉTAPE 5 (section 2) pour l'installation.
+
+3 MODES (dans ⚙️ -> "Mode de correction") :
+  • Désactivé   : aucune correction.
+  • Automatique : corrige en silence les fautes certaines après chaque dictée.
+  • Semi-auto   : ouvre un panneau de relecture -> vous validez chaque faute
+                  (proposition, ignorer, ou ➕ ajouter au dictionnaire).
+
+DICTIONNAIRE PERSONNEL (⚙️) :
+  Ajoutez vos mots (noms propres, jargon) pour qu'ils ne soient plus signalés.
+  ⚠️ LIMITATION : le dictionnaire corrige l'ORTHOGRAPHE (mots inconnus) mais
+  PAS la grammaire/accords. Et il NE CORRIGE PAS un mot mal entendu par Whisper
+  (ex : "enant" au lieu de "un nain" = problème de transcription, pas de faute).
+
+
+8quater. ENVOI VERS N8N / WEBHOOK (bouton 📤)
+-------------------------------------------------------------------------------
+Le bouton 📤 ENVOYER arme/désarme l'envoi de chaque dictée vers un webhook n8n
+(style bouton AUDIO). 100% configurable et universel.
+
+CONFIGURATION (dans ⚙️ -> "Webhook n8n") :
+  • URL du webhook   : ex http://localhost:5678/webhook/dictee
+  • Jeton (token)    : optionnel (sécurité)
+  • Bouton "Tester"  : envoie un payload de test pour vérifier la connexion.
+
+QUAND LE MODE EST ARMÉ :
+  Chaque dictée est envoyée automatiquement en POST JSON :
+    { "texte": "...", "langue": "fr", "date": "...", "source": "mini-dictaphone" }
+
+USAGE : connecter le dictaphone à n8n ( Jarvis, automatisations, Discord,
+  Notion, un LLM...). Nécessite n8n installé et un workflow avec un nœud Webhook.
+
+
+9. PANNEAU "MISES À JOUR & MODÈLES" (icône ⚙️)
+-------------------------------------------------------------------------------
+Ce panneau permet de :
+  - Changer la LANGUE de l'interface (menu déroulant en haut).
+  - Voir le GPU détecté.
+  - Vérifier les MAJ de l'app et de l'exécutable Whisper (via GitHub).
+  - Télécharger / supprimer des modèles Whisper.
+
+TABLEAU COMPARATIF DES MODÈLES (avec info-bulle au survol de VRAM) :
+
+  Modèle    VRAM      FR    EN    ES/IT   PT/DE   Verdict
+  ------    ----      --    --    ------  ------   -------
+  tiny      ~1 Go     ❌    ⚠️     ❌      ❌      À éviter
+  base      ~1 Go     ⚠️    ✅     ⚠️      ❌      Correct EN
+  small     ~2 Go     ✅    ✅     ✅      ⚠️      ⭐ Bon équilibre
+  medium    ~5 Go     ✅    ✅     ✅      ✅      Bon mais gourmand
+  large-v3  ~10 Go    ✅    ✅     ✅      ✅      Très lourd
+
+INFO-BULLE VRAM (au survol) : "La VRAM est la mémoire de votre carte graphique.
+Pensez aux autres logiciels lourds que vous utilisez en même temps (jeux,
+génération d'images, IA). Si le total dépasse la capacité, le PC peut ramer."
+
+Vérification auto au lancement : un point jaune 🟡 apparaît en haut si une MAJ
+de l'application est disponible.
+
+
+10. CONFIGURATION AVANCÉE (fichier config.json)
+-------------------------------------------------------------------------------
+Éditable au bloc-notes (l'app fermée) :
+  {
+    "appVersion": "1.0.0",
+    "updateRepo": "VOTRE_NOM_GITHUB/mini-dictaphone",  <-- votre dépôt GitHub
+    "checkUpdatesOnLaunch": true,   <-- vérif MAJ au démarrage
+    "language": "fr",               <-- langue de transcription (Whisper)
+    "window": { "width":450, "height":300, "x":null, "y":null }
+  }
+
+"updateRepo" DOIT être remplacé par votre dépôt GitHub pour que les MAJ de
+l'application fonctionnent. Sinon, seul le clic "Vérifier MAJ" tentera et
+affichera "Dépôt non configuré".
+
+
+11. DÉSINSTALLATION
+-------------------------------------------------------------------------------
+- Lancez DESINSTALLER.bat depuis le dossier d'installation.
+- Une boîte de dialogue vous AVERTIT DANS VOTRE LANGUE que tout sera supprimé :
+    programme, Whisper, modèle, ET TOUTES vos sauvegardes (textes + audios).
+- Cliquez "Oui" pour confirmer, ou "Non" pour annuler.
+- C'est IRRÉVERSIBLE. Copiez le dossier Sauvegardes\ ailleurs avant si besoin.
+
+
+12. EN CAS DE PROBLÈME
+-------------------------------------------------------------------------------
+- "il manque main.exe" : téléchargez cli.zip (pas WhisperDesktop.zip).
+- "il manque un modèle" : ⚙️ > Modèles > Télécharger.
+- "Aucun son capté" : vérifiez le micro (barre VU immobile = pas de capture).
+- "Timeout 60s" : enregistrement trop long ou PC lent. Prenez un plus petit
+  modèle (small).
+- Texte qui se répète : bug connu de Whisper, déjà atténué (option -mc 0).
+- Erreur "wmic" : corrigée (utilise PowerShell maintenant).
+- MAJ app ne marche pas : mettez votre dépôt dans config.json (updateRepo).
+
+
+13. CONFIDENTIALITÉ
+-------------------------------------------------------------------------------
+- 100% hors-ligne pour la TRANSCRIPTION. Audio et texte ne quittent jamais
+  votre PC.
+- La vérification de mise à jour et le téléchargement de modèles nécessitent
+  internet (mais ne transmettent jamais vos données vocales).
+
+
+##############################################################################
+#                              ENGLISH VERSION                               #
+##############################################################################
+
+
+1. WHAT THE SOFTWARE DOES
+-------------------------------------------------------------------------------
+A small, ultra-light voice dictation utility. A floating window that stays
+always on top of other windows. 100% local voice recognition in French (or
+other languages) via Whisper. No data ever leaves your PC.
+
+  - Floating window always on top (PureRef style).
+  - You speak into the mic -> the transcribed text appears on screen.
+  - Automatic save of each conversation, organized by day.
+  - Visual microphone level indicator (VU meter).
+  - Interface language choice (FR, EN, ES, PT, DE, IT) at first launch.
+  - Navigation through notes history (previous / next).
+  - Ability to attach files to a note.
+  - Whisper model manager (1-click download from the app).
+  - Update system (application + Whisper executable).
+  - Window position/size memory.
+  - Global keyboard shortcuts.
+
+
+2. INSTALLATION (do it once)
+-------------------------------------------------------------------------------
+
+>>> STEP 1: Install the program itself <<<
+  - Double-click INSTALLATEUR.bat
+  - Choose the installation folder (e.g. D:\Tools, or C:\)
+  - The program installs into <folder>\MiniDictaphone
+  - A "Mini Dictaphone V1" shortcut is created on the Desktop.
+
+  NOTE: the shortcut is PINNABLE. On Windows 11, right-click -> "Pin to
+  taskbar" works (the shortcut points to electron.exe, not a .bat file).
+
+  NOTE: if an installation already exists at the chosen location, the installer
+  offers: [1] Replace (keeps your saves) / [2] Delete all / [3] Cancel.
+  No more nested folders.
+
+>>> STEP 2: Node.js (AUTOMATIC) <<<
+  The installer (STEP 1) detects Node.js and installs it AUTOMATICALLY if
+  needed (official LTS version, silent install). A Windows prompt may ask for
+  your permission (click "Yes").
+  On first launch of the dictaphone, Electron downloads automatically.
+  (If the auto-install fails, you can install Node.js manually:
+   https://nodejs.org/ — LTS version — then rerun the installer.)
+
+>>> STEP 3: Install the Whisper engine (from the app, recommended) <<<
+  - Launch Mini Dictaphone V1.
+  - Click the [⚙️] icon at the top right.
+  - In "Models", click "Download" on the model of your choice.
+    (small = good quality/lightness balance, recommended)
+  - WARNING: you ALSO need main.exe. See step 4.
+
+>>> STEP 4: Install main.exe (the Whisper executable) <<<
+  - Download cli.zip: https://github.com/Const-me/Whisper/releases/latest
+    (NOT "WhisperDesktop.zip"! Get "cli.zip")
+  - Right-click cli.zip -> "Extract All..."
+  - Target folder: <install folder>\MiniDictaphone\Whisper
+  - This will place main.exe and its dll files there.
+
+>>> STEP 5: Install the spellchecker (OPTIONAL) <<<
+  The spellchecker is NOT required: the dictaphone works without it.
+  To enable it: open ⚙️ -> "Spellchecker" row -> "Install" button.
+  The app auto-downloads Java (Temurin 21) + LanguageTool (~350 MB)
+  into the Correcteur/ folder, then starts the server (localhost:8081).
+  100% local: no data leaves your computer.
+
+  ⚠️ IF THE DOWNLOAD FAILS (URL changed, server down):
+  You can install the 2 components manually:
+    1) Java (JDK 17+, portable version recommended):
+       - Official source: https://adoptium.net/temurin/releases/
+       - Pick the "JDK" version, Windows x64, .zip format (portable).
+       - Extract the contents into: MiniDictaphone\Correcteur\java\
+         (java.exe must end up at
+          MiniDictaphone\Correcteur\java\bin\java.exe)
+
+    2) LanguageTool (zip containing languagetool-server.jar):
+       - Official source: https://languagetool.org/download/
+       - Download "LanguageTool-stable.zip" (the stable version).
+       - Extract the contents into: MiniDictaphone\Correcteur\LanguageTool\
+         (languagetool-server.jar must end up directly at
+          MiniDictaphone\Correcteur\LanguageTool\languagetool-server.jar)
+
+  Once both components are in place, restart the app then ⚙️ -> "Start".
+
+>>> PORTABILITY NOTE (USB stick) <<<
+  EVERYTHING is contained in a single folder (default C:\MiniDictaphone):
+  the program, the Whisper engine, the models, the spellchecker (Java +
+  LanguageTool), and your saves. No file is scattered elsewhere on the PC
+  (not in Program Files, not in the registry, not in system environment
+  variables).
+  => You can copy the entire MiniDictaphone folder onto a USB stick and
+     launch it on another PC (provided Node.js is installed there), with no
+     reinstallation. Your models, your spellchecker and your saves travel
+     with you.
+
+
+3. FIRST LAUNCH (language choice)
+-------------------------------------------------------------------------------
+On the very first launch, a window asks you to choose the interface language
+among 6: Français, English, Español, Português, Deutsch, Italiano.
+
+This choice is permanent for the interface, but you can change it later via the
+[⚙️] panel -> drop-down menu at the top of the panel.
+
+Once the language is chosen, the screen displays:
+  - "SYSTEM READY" if Whisper is properly installed (main.exe + a model).
+  - "... is missing" otherwise, with instructions.
+
+
+4. THE INTERFACE
+-------------------------------------------------------------------------------
+
+  Top bar:
+    [🎙️ Mini Dictaphone V1]    [🔊] Windows sound settings
+    [⚙️] Updates, Models, Language  [➖] Minimize  [⬜] Maximize  [✕] Close
+    (A yellow dot 🟡 appears if an app update is available.)
+
+  Central area:
+    Large green screen = transcribed text (hand-editable).
+
+  Below the screen:
+    [VU bar]        Microphone level during recording.
+    [◀] [info] [▶]  Navigation through notes history.
+    [CANCEL] [ON/OFF]  Microphone controls.
+    [CLEAR][COPY][📂][📎×N]  Text actions.
+
+  Config bar (bottom):
+    Transcription language: [FR/EN/ES/DE/IT/Auto drop-down]
+    Model: <active model name>
+
+  To move the window: click-drag on the top bar.
+
+
+5. USAGE - VOICE DICTATION
+-------------------------------------------------------------------------------
+1. Click [ON/OFF] (or Ctrl+Shift+M). The button turns red.
+2. The VU bar reacts to your voice: confirms the mic is capturing.
+3. Speak normally into the microphone.
+4. Click [ON/OFF] (or Ctrl+Shift+M) to stop.
+5. "Transcribing..." appears, then the text displays and saves.
+
+IMPORTANT: transcription is NOT real-time. The text appears AFTER you stop the
+microphone (simpler and more robust, fewer errors).
+
+
+5bis. FOR BETTER TRANSCRIPTION (practical tips)
+-------------------------------------------------------------------------------
+Text quality depends as much on the audio as on the Whisper model. If you
+notice errors (distorted words, swallowed word endings), these 3 levers
+significantly improve the result:
+
+  1) THE WHISPER MODEL (biggest improvement)
+     - tiny/base   : many errors in French (not recommended).
+     - small (⭐)   : good quality/VRAM balance (recommended by default).
+     - medium      : very good in French, but VRAM-hungry (~5 GB).
+     - large-v3    : excellent, but very heavy (~10 GB VRAM).
+     Switch models in ⚙️ -> comparison table. Check your VRAM ("Detected GPU"
+     row) before upgrading to medium/large: if the total of heavy software
+     (games, AI) exceeds your VRAM, the PC slows down or crashes.
+
+  2) MICROPHONE POSITION (simplest, free)
+     - Place the mic 6-12 inches (15-30 cm) from your mouth (no farther).
+     - Avoid turning your head while dictating.
+     - Cut noise sources: fan, open window, music.
+
+  3) PRONUNCIATION
+     - Articulate word endings ("naiN", "chilD", "I've").
+     - Slow down slightly: fast speech generates more errors.
+     - Make short pauses between sentences.
+
+  RECOMMENDATION: start with the mic (move closer, cut noise) and the small
+  model. If errors persist, upgrade to medium IF your VRAM allows it. The
+  spellchecker (⚙️) fixes spelling and grammar, but it CANNOT fix a wrong word
+  heard by Whisper (e.g. "enant" instead of "a dwarf": Whisper misheard, it's
+  not a spelling mistake).
+
+
+6. KEYBOARD SHORTCUTS (global - work even if another app has focus)
+-------------------------------------------------------------------------------
+  Ctrl + Shift + M    Toggle microphone ON / OFF
+  Ctrl + Shift + C    Copy all text
+  Ctrl + Shift + E    Clear the screen (E for Erase)
+
+
+7. SAVES & HISTORY
+-------------------------------------------------------------------------------
+- Auto-save: on mic stop + on app close.
+- Organization by day:
+    Sauvegardes\2026-07-01\15-30.txt  16-12.txt  ...
+- Anti-collision: if 2 notes start the same minute -> -2, -3 suffix.
+- [CLEAR] deletes the current note AND its attachments from disk.
+- Navigable history: [◀] [▶] to browse, edit, re-save.
+
+
+8. FILE INSERTION (📎 button)
+-------------------------------------------------------------------------------
+The 📎 button INSERTS THE CONTENT of a file directly after the text
+(to then copy everything at once).
+
+SUPPORTED FORMATS:
+  • Text     : .txt, .json, .md, .csv, .js, .py, .html, .css, .xml, .log
+  • Excel    : .xlsx, .xls, .ods (all sheets converted to a table)
+  • Word     : .docx only
+               ⚠️ LIMITATION: .doc (Word before 2007) NOT supported.
+               ⚠️ LIMITATION: formatting (bold, colors) is lost,
+                 only plain text is extracted.
+  • PDF      : .pdf (extractable text only)
+               ⚠️ LIMITATION: scanned PDFs (photos of documents) do not
+                 contain extractable text -> displays an error.
+                 Only computer-generated PDFs work.
+
+UNSUPPORTED FORMATS: images (.jpg, .png), audio, video, executables.
+
+
+8bis. TRANSLATION TO ENGLISH (🌐 button)
+-------------------------------------------------------------------------------
+The 🌐 TRANSLATE button arms/disarms translation mode (AUDIO-button style).
+When armed (blinking red), each dictation is translated into English
+automatically by Whisper (native --translate option, zero dependencies).
+
+  Example: you dictate in French "bonjour comment ça va" -> the displayed
+  text is "hello how are you".
+
+  ⚠️ LIMITATION: Whisper only translates INTO English (technical limit).
+  To translate into other languages, an extra library would be needed
+  (Argos Translate, ~500 MB) — not integrated for now.
+
+  Use case: fill forms/prompts on English websites, communicate with people
+  who don't speak your language, etc.
+
+
+8ter. SPELLCHECKER (local LanguageTool)
+-------------------------------------------------------------------------------
+The dictaphone integrates a 100% local spellchecker (LanguageTool).
+See STEP 5 (section 2) for installation.
+
+3 MODES (in ⚙️ -> "Correction mode"):
+  • Disabled    : no correction.
+  • Automatic   : silently fixes certain errors after each dictation.
+  • Semi-auto   : opens a review panel -> you validate each error
+                  (suggestion, ignore, or ➕ add to dictionary).
+
+PERSONAL DICTIONARY (⚙️):
+  Add your words (proper nouns, jargon) so they're no longer flagged.
+  ⚠️ LIMITATION: the dictionary fixes SPELLING (unknown words) but NOT
+  grammar/agreement. And it does NOT fix a misheard word by Whisper
+  (e.g. "enant" instead of "a dwarf" = a transcription issue, not an error).
+
+
+8quater. SENDING TO N8N / WEBHOOK (📤 button)
+-------------------------------------------------------------------------------
+The 📤 SEND button arms/disarms sending each dictation to an n8n webhook
+(AUDIO-button style). 100% configurable and universal.
+
+CONFIGURATION (in ⚙️ -> "n8n Webhook"):
+  • Webhook URL  : e.g. http://localhost:5678/webhook/dictation
+  • Token        : optional (security)
+  • "Test" button: sends a test payload to check the connection.
+
+WHEN THE MODE IS ARMED:
+  Each dictation is automatically sent as a POST JSON:
+    { "texte": "...", "langue": "fr", "date": "...", "source": "mini-dictaphone" }
+
+USE CASE: connect the dictaphone to n8n (Jarvis, automations, Discord, Notion,
+  an LLM...). Requires n8n installed and a workflow with a Webhook node.
+
+
+9. "UPDATES & MODELS" PANEL (⚙️ icon)
+-------------------------------------------------------------------------------
+This panel allows you to:
+  - Change the interface LANGUAGE (drop-down menu at the top).
+  - See the detected GPU.
+  - Check for app and Whisper executable updates (via GitHub).
+  - Download / delete Whisper models.
+
+MODEL COMPARISON TABLE (with tooltip on VRAM hover):
+
+  Model     VRAM      FR    EN    ES/IT   PT/DE   Verdict
+  ------    ----      --    --    ------  ------   -------
+  tiny      ~1 GB     ❌    ⚠️     ❌      ❌      Avoid
+  base      ~1 GB     ⚠️    ✅     ⚠️      ❌      OK for EN
+  small     ~2 GB     ✅    ✅     ✅      ⚠️      ⭐ Good balance
+  medium    ~5 GB     ✅    ✅     ✅      ✅      Good but heavy
+  large-v3  ~10 GB    ✅    ✅     ✅      ✅      Very heavy
+
+VRAM TOOLTIP (on hover): "VRAM is your graphics card memory. Consider other
+heavy software you use at the same time (games, image generation, AI). If the
+total exceeds the capacity, the PC may slow down."
+
+Auto-check on launch: a yellow dot 🟡 appears at the top if an app update is
+available.
+
+
+10. ADVANCED CONFIGURATION (config.json file)
+-------------------------------------------------------------------------------
+Editable with notepad (app closed):
+  {
+    "appVersion": "1.0.0",
+    "updateRepo": "YOUR_GITHUB_NAME/mini-dictaphone",  <-- your GitHub repo
+    "checkUpdatesOnLaunch": true,   <-- update check on startup
+    "language": "fr",               <-- transcription language (Whisper)
+    "window": { "width":450, "height":300, "x":null, "y":null }
+  }
+
+"updateRepo" MUST be replaced with your GitHub repo for app updates to work.
+Otherwise, only the "Check updates" click will try and display
+"Repository not configured".
+
+
+11. UNINSTALLATION
+-------------------------------------------------------------------------------
+- Run DESINSTALLER.bat from the installation folder.
+- A dialog box WARNS YOU IN YOUR LANGUAGE that everything will be deleted:
+    program, Whisper, model, AND ALL your saves + attachments.
+- Click "Yes" to confirm, or "No" to cancel.
+- This is IRREVERSIBLE. Copy the Sauvegardes\ folder elsewhere beforehand if
+  needed.
+
+
+12. TROUBLESHOOTING
+-------------------------------------------------------------------------------
+- "...main.exe missing": download cli.zip (not WhisperDesktop.zip).
+- "...model missing": ⚙️ > Models > Download.
+- "No sound captured": check the mic (still VU bar = no capture).
+- "Timeout 60s": recording too long or slow PC. Use a smaller model (small).
+- Text repeating: known Whisper bug, already mitigated (-mc 0 option).
+- "wmic" error: fixed (now uses PowerShell).
+- App update not working: put your repo in config.json (updateRepo).
+
+
+13. PRIVACY
+-------------------------------------------------------------------------------
+- 100% offline for TRANSCRIPTION. Audio and text never leave your PC.
+- Update checking and model downloading require internet (but never transmit
+  your voice data).
+
+
+===============================================================================
+                        Fin du manuel / End of manual
+                       Mini Dictaphone V1 - 2026
+===============================================================================

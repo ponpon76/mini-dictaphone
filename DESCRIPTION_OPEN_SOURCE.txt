@@ -1,0 +1,56 @@
+===============================================================================
+         DESCRIPTION COURTE - MINI DICTAPHONE V1 (Open Source)
+                       by ponpon 76
+              Code réalisé par Coder (GLM-5.2, ZCode)
+===============================================================================
+
+🇫🇷 FRANÇAIS
+-------------------------------------------------------------------------------
+
+Mini Dictaphone V1 est un dictaphone vocal flottant, toujours au premier plan,
+avec reconnaissance vocale 100 % hors-ligne via Whisper. Aucune donnée (audio
+ou texte) ne quitte votre ordinateur.
+
+Pensé comme un utilitaire discret (style PureRef), il flotte au-dessus de vos
+autres applications, prêt à capter votre voix à tout moment. Interface
+disponible en 6 langues (français, anglais, espagnol, portugais, allemand,
+italien). Raccourci épinglable à la barre des tâches Windows 11.
+
+Fonctionnalités principales :
+  • Dictée vocale hors-ligne (Whisper, GPU)
+  • Fenêtre flottante Always-On-Top
+  • Sauvegarde automatique par jour
+  • Gestionnaire de modèles (1 clic)
+  • Filtrage automatique des bruits parasites
+  • Insertion de fichiers (texte, Excel, Word, PDF)
+  • 100 % privé, aucune télémétrie
+  • 100 % portable (clé USB) — tout dans un seul dossier
+
+Technologies : Electron, Whisper (Const-me), JavaScript natif.
+
+
+🇬🇧 ENGLISH
+-------------------------------------------------------------------------------
+
+Mini Dictaphone V1 is a floating voice dictaphone, always on top, with 100%
+offline speech recognition via Whisper. No data (audio or text) ever leaves
+your computer.
+
+Designed as a discrete utility (PureRef style), it floats above your other
+applications, ready to capture your voice at any time. Interface available in
+6 languages (French, English, Spanish, Portuguese, German, Italian). Shortcut
+pinnable to Windows 11 taskbar.
+
+Main features:
+  • Offline voice dictation (Whisper, GPU)
+  • Always-On-Top floating window
+  • Automatic save by day
+  • Model manager (1 click)
+  • Automatic background noise filtering
+  • File insertion (text, Excel, Word, PDF)
+  • 100% private, no telemetry
+  • 100% portable (USB stick) — all in a single folder
+
+Technologies: Electron, Whisper (Const-me), native JavaScript.
+
+===============================================================================

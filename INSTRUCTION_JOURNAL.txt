@@ -1,0 +1,105 @@
+===============================================================================
+           INSTRUCTION POUR CODER — CRÉATION DU JOURNAL DE BORD
+===============================================================================
+👉 COPIER-COLLER L'INTÉGRALITÉ DE CE FICHIER dans l'ancienne conversation,
+   comme un message adressé à Coder.
+
+-------------------------------------------------------------------------------
+
+SALUT CODER,
+
+Je te demande de créer un nouveau fichier : **JOURNAL.txt**
+
+Il vient en complément du BOOK.txt. Voici tout ce qu'il te faut savoir.
+
+═══════════════════════════════════════════════════════════════════════════════
+POURQUOI CE FICHIER (LE BUT)
+═══════════════════════════════════════════════════════════════════════════════
+
+Problème : à chaque NOUVELLE conversation, tu repars à vide. Pour retrouver
+le contexte, il faudrait relire toute la conversation précédente = gaspillage
+massif de tokens.
+
+Solution : un **journal de bord session par session**.
+
+- BOOK.txt     = l'état GLOBAL du projet (référence stable, ne change pas
+                 tous les jours). Déjà fait.
+- JOURNAL.txt  = l'HISTORIQUE de ce qu'on fait, session par session, daté,
+                 du plus récent en HAUT. C'est CE fichier à créer.
+
+=> Dans une nouvelle conversation, Coder ne relit QUE :
+   1. Le BOOK.txt (contexte global)
+   2. Les 2-3 dernières entrées du JOURNAL.txt (le tout récent)
+   …au lieu de relire 50 messages. Tokens économisés.
+
+═══════════════════════════════════════════════════════════════════════════════
+EMPLACEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+   D:\program\prog\mini dictaphone\JOURNAL.txt
+
+Au même endroit que le BOOK.txt.
+
+═══════════════════════════════════════════════════════════════════════════════
+STRUCTURE À RESPECTER (NON-NÉGOCIABLE)
+═══════════════════════════════════════════════════════════════════════════════
+
+En-tête identique au BOOK (auteur, code, esprit, but du fichier).
+
+Puis des entrées datées, **du plus récent EN HAUT** (la dernière session
+toujours en premier, comme ça on lit le haut pour le contexte frais).
+
+Chaque entrée contient EXACTEMENT ces 5 champs :
+
+   ┌─ SESSION du AAAA-MM-JJ ─────────────────────────────────────┐
+   │  • RÉSUMÉ (1 ligne)         : ce qu'on a fait, en gros       │
+   │  • MODIFS                   : liste des fichiers touchés     │
+   │  • DÉCISIONS                : choix pris + pourquoi          │
+   │  • RESTE À TESTER / BUGS    : ce qui pend, points en suspens │
+   │  • PROCHAINE ÉTAPE          : par où on reprendra            │
+   └──────────────────────────────────────────────────────────────┘
+
+Règles de style :
+   - COURT. Pas de blabla. Quelques lignes par champ suffisent.
+   - Précis sur les NOMS de fichiers (pour les retrouver vite).
+   - Si un bug reste ouvert, le dire explicitement (pas le cacher).
+
+═══════════════════════════════════════════════════════════════════════════════
+RÈGLE D'HYGIÈNE (LA PLUS IMPORTANTE)
+═══════════════════════════════════════════════════════════════════════════════
+
+À LA FIN DE CHAQUE SESSION, Coder DOIT ajouter une entrée en haut du
+JOURNAL.txt avant que la conversation ne se termine.
+
+C'est ça qui fait marcher le système. Sans mise à jour, le journal devient
+vite inutile. Donc : fin de session = on écrit l'entrée.
+
+═══════════════════════════════════════════════════════════════════════════════
+EXEMPLE — PREMIÈRE ENTRÉE À METTRE
+═══════════════════════════════════════════════════════════════════════════════
+
+Coder, pour la TOUTE PREMIÈRE entrée, décris simplement l'état actuel tel
+que tu le connais via le BOOK.txt (résumé de ce qui est terminé + ce qui
+reste à faire : correcteur LanguageTool = priorité haute, traduction EN,
+intégration Jarvis). Date : 2026-07-02. Ce sera l'entrée « Session 0 » de
+référence, à partir de laquelle on enchaînera.
+
+═══════════════════════════════════════════════════════════════════════════════
+À NE PAS FAIRE
+═══════════════════════════════════════════════════════════════════════════════
+
+   - NE PAS dupliquer le BOOK.txt dedans (le journal = l'historique,
+     le book = la référence, ils sont complémentaires, pas identiques).
+   - NE PAS y mettre le code lui-même (juste les noms de fichiers +
+     ce qui a changé).
+   - NE PAS attendre la fin du projet pour le tenir (une entrée par
+     session, même petite).
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Demande-moi le feu vert comme d'habitude avant de créer le fichier.
+(Convention du projet : je dis "go" quand je suis prêt.)
+
+===============================================================================
+                       FIN DE L'INSTRUCTION — COPIER EN ENTIER
+===============================================================================

@@ -1,0 +1,1457 @@
+<!--
+============================================================
+ Mini Dictaphone V1
+ by ponpon 76
+ Open source - libre de réutilisation et modification
+ Fichier : index.html (interface + capture audio + Whisper)
+============================================================
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mini Dictaphone V1</title>
+  <style>
+    body {
+      margin: 0; padding: 0; background: rgba(30, 30, 46, 0.95); color: #cdd6f4;
+      font-family: system-ui, -apple-system, sans-serif; height: 100vh;
+      display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .top-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 5px 10px; background: rgba(0,0,0,0.2);
+      -webkit-app-region: drag; user-select: none;
+    }
+    .top-left { display: flex; gap: 8px; align-items: center; font-size: 11px; opacity: 0.7; }
+    .top-right { display: flex; gap: 2px; }
+    .top-btn {
+      background: transparent; border: none; color: #cdd6f4; font-size: 14px;
+      width: 35px; height: 25px; cursor: pointer; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      -webkit-app-region: no-drag;
+    }
+    .top-btn:hover { background: rgba(255,255,255,0.1); }
+    .btn-close:hover { background: #f38ba8; color: #1e1e2e; }
+    .update-dot { width: 8px; height: 8px; border-radius: 50%; background: #f9e2af; display: none; }
+    .update-dot.show { display: inline-block; }
+
+    .main-content { flex: 1; padding: 15px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+
+    #text-output {
+      flex: 1; background: rgba(0,0,0,0.3); border: none; color: #a6e3a1;
+      font-size: 16px; padding: 10px; border-radius: 8px; resize: none;
+      outline: none; margin-bottom: 10px; line-height: 1.5;
+    }
+
+    /* VU meter */
+    .vu-meter { height: 4px; background: rgba(0,0,0,0.3); border-radius: 2px; margin-bottom: 10px; overflow: hidden; }
+    .vu-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #a6e3a1, #f9e2af, #f38ba8); transition: width 0.05s; }
+
+    .nav-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 12px; }
+    .nav-btn {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cdd6f4;
+      padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+    .nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
+    .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    #nav-info { flex: 1; text-align: center; opacity: 0.7; }
+
+    .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+    .mic-btn {
+      flex: 1; padding: 10px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: bold; cursor: pointer; transition: 0.2s;
+    }
+    #btn-on-off { background: #a6e3a1; color: #1e1e2e; }
+    #btn-on-off.active { background: #f38ba8; color: white; animation: pulse 1.5s infinite; }
+    #btn-cancel { background: #45475a; color: #cdd6f4; flex: 0.5; }
+    #btn-cancel:hover { background: #585b70; }
+
+    .actions { display: flex; gap: 8px; align-items: center; }
+    .action-btn {
+      padding: 8px 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+      background: rgba(255,255,255,0.1); color: #cdd6f4; cursor: pointer;
+      font-size: 12px; transition: 0.2s;
+    }
+    .action-btn:hover { background: rgba(255,255,255,0.2); }
+    .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #btn-clear { color: #f38ba8; }
+    #btn-clear:hover { background: rgba(243,139,168,0.2); }
+    #btn-copy { flex: 1; }
+    /* Bouton Sauvegarde et Audio : rouge clignotant quand armé */
+    .btn-audio.armed { background: #f38ba8; color: #1e1e2e; animation: pulse 1.5s infinite; font-weight: bold; }
+    #btn-folder, #btn-attach { font-size: 15px; }
+    #attach-count { font-size: 11px; opacity: 0.8; }
+
+    /* Barre de configuration bas */
+    .config-bar { display: flex; gap: 8px; align-items: center; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; font-size: 11px; }
+    .config-bar select {
+      background: rgba(0,0,0,0.3); color: #cdd6f4; border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer;
+    }
+    #btn-settings { margin-left: auto; }
+
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
+    .flash {
+      position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%);
+      background: rgba(166,227,161,0.95); color: #1e1e2e; padding: 6px 16px;
+      border-radius: 6px; font-size: 12px; font-weight: bold; opacity: 0;
+      transition: opacity 0.2s; pointer-events: none; z-index: 100; max-width: 90%; text-align: center;
+    }
+    .flash.show { opacity: 1; }
+
+    /* Panneau modale (MAJ + Modèles) */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none;
+      align-items: center; justify-content: center; z-index: 200; padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: #1e1e2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px;
+      padding: 20px; max-width: 400px; width: 100%; max-height: 80vh; overflow-y: auto;
+    }
+    .modal h3 { margin: 0 0 15px 0; font-size: 15px; }
+    .modal-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px; font-size: 12px;
+    }
+    .modal-row .meta { opacity: 0.7; font-size: 10px; }
+    .modal-btn {
+      background: #a6e3a1; color: #1e1e2e; border: none; padding: 5px 12px;
+      border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;
+    }
+    .modal-btn.secondary { background: rgba(255,255,255,0.1); color: #cdd6f4; }
+    .modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .modal-close { width: 100%; margin-top: 10px; }
+    .progress-bar { height: 6px; background: rgba(0,0,0,0.3); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+    .progress-fill { height: 100%; background: #a6e3a1; transition: width 0.2s; }
+    .badge-installed { background: rgba(166,227,161,0.2); color: #a6e3a1; padding: 2px 6px; border-radius: 3px; font-size: 9px; }
+    .badge-active { background: #a6e3a1; color: #1e1e2e; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; }
+
+    /* Tableau comparatif des modèles + info-bulle VRAM */
+    .models-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
+    .models-table th, .models-table td { border: 1px solid rgba(255,255,255,0.12); padding: 5px 4px; text-align: center; }
+    .models-table th { background: rgba(0,0,0,0.3); font-weight: bold; }
+    .models-table td:first-child, .models-table th:first-child { text-align: left; font-weight: bold; }
+    .vram-cell { cursor: help; position: relative; }
+    .vram-tooltip {
+      display: none; margin: 6px 0; padding: 8px 10px; background: rgba(243,139,168,0.15);
+      border: 1px solid rgba(243,139,168,0.4); border-radius: 6px; font-size: 10px; line-height: 1.4; color: #f38ba8;
+    }
+    .vram-tooltip.show { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="top-left">
+      <span>🎙️ Mini Dictaphone V1</span>
+      <span class="update-dot" id="update-dot" title="Une mise à jour est disponible"></span>
+      <span style="opacity:0.45; font-size:10px; margin-left:6px;">by ponpon 76</span>
+    </div>
+    <div class="top-right">
+      <button class="top-btn" onclick="openSettings()" title="Paramètres Son">🔊</button>
+      <button class="top-btn" onclick="openUpdatePanel()" title="Mises à jour & Modèles">⚙️</button>
+      <button class="top-btn" onclick="minimizeApp()" title="Réduire">➖</button>
+      <button class="top-btn" onclick="maximizeApp()" title="Redimensionner">⬜</button>
+      <button class="top-btn btn-close" onclick="closeApp()" title="Fermer">✕</button>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <textarea id="text-output" placeholder="Le texte converti apparaîtra ici..."></textarea>
+
+    <div class="vu-meter"><div class="vu-fill" id="vu-fill"></div></div>
+
+    <div class="nav-bar">
+      <button class="nav-btn" id="nav-prev" onclick="navHistory(-1)" title="◀">◀</button>
+      <span id="nav-info" data-i18n="nouvelle_note">Nouvelle note</span>
+      <button class="nav-btn" id="nav-next" onclick="navHistory(1)" title="▶">▶</button>
+    </div>
+
+    <div class="controls">
+      <button id="btn-cancel" class="mic-btn" onclick="cancelRecording()" data-i18n="annuler">ANNULER</button>
+      <button id="btn-on-off" class="mic-btn" onclick="toggleMic()" data-i18n="on_off">ON / OFF</button>
+    </div>
+    <div class="actions">
+      <button id="btn-clear" class="action-btn" onclick="clearNote()" data-i18n="clear" data-i18n-title="clear">CLEAR</button>
+      <button id="btn-copy" class="action-btn" onclick="copyText()" data-i18n="copier">COPIER</button>
+      <button id="btn-audio" class="action-btn btn-audio" onclick="toggleModeAudio()" data-i18n="audio" title="💾">💾 <span data-i18n="audio">AUDIO</span></button>
+      <button id="btn-translate" class="action-btn btn-audio" onclick="toggleModeTraduction()" title="🌐" data-i18n="traduire">🌐 <span data-i18n="traduire">TRADUIRE</span></button>
+      <button id="btn-webhook" class="action-btn btn-audio" onclick="toggleModeWebhook()" title="📤" data-i18n="envoyer">📤 <span data-i18n="envoyer">ENVOYER</span></button>
+      <button id="btn-folder" class="action-btn" onclick="openFolder()" title="📂">📂</button>
+      <button id="btn-attach" class="action-btn" onclick="insererFichier()" title="📎">📎</button>
+    </div>
+
+    <div class="config-bar">
+      <label>Langue :</label>
+      <select id="lang-select" onchange="changeLang(this.value)">
+        <option value="fr">🇫🇷 Français</option>
+        <option value="en">🇬🇧 Anglais</option>
+        <option value="es">🇪🇸 Espagnol</option>
+        <option value="de">🇩🇪 Allemand</option>
+        <option value="it">🇮🇹 Italien</option>
+        <option value="auto">🌍 Auto</option>
+      </select>
+      <span id="model-label" style="opacity:0.7">Modèle: ...</span>
+    </div>
+  </div>
+
+  <div id="flash" class="flash"></div>
+
+  <!-- Modale Mises à jour + Modèles -->
+  <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <h3 id="modal-titre">⚙️ Mises à jour & Modèles</h3>
+      <div id="modal-content"></div>
+      <button class="action-btn modal-close" onclick="closeModal()" data-i18n="fermer">Fermer</button>
+    </div>
+  </div>
+
+  <!-- Écran de choix de langue (premier lancement) -->
+  <div class="modal-overlay show" id="lang-screen">
+    <div class="modal" style="text-align:center;">
+      <h3 id="lang-screen-titre">Choose your language</h3>
+      <select id="lang-screen-select" style="background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; font-size:16px; width:100%; margin:10px 0; cursor:pointer;">
+        <option value="fr">🇫🇷 Français</option>
+        <option value="en">🇬🇧 English</option>
+        <option value="es">🇪🇸 Español</option>
+        <option value="pt">🇵🇹 Português</option>
+        <option value="de">🇩🇪 Deutsch</option>
+        <option value="it">🇮🇹 Italiano</option>
+      </select>
+      <button class="modal-btn" style="width:100%; padding:12px; font-size:14px;" onclick="confirmerLangue()" id="lang-screen-confirm">Confirm</button>
+    </div>
+  </div>
+
+  <!-- Panneau de relecture (mode semi-auto) -->
+  <div class="modal-overlay" id="relecture-overlay" onclick="if(event.target===this)validerRelecture()">
+    <div class="modal" style="max-width:420px;">
+      <h3>✅ <span data-i18n="relecture_titre">Relecture</span> <span id="relecture-num" style="opacity:0.7; font-size:11px;"></span></h3>
+      <div class="modal-row" style="flex-direction:column; align-items:flex-start;">
+        <div class="meta" style="margin-bottom:4px;"><b id="relecture-fautif" style="color:#f38ba8;"></b></div>
+        <div id="relecture-message" style="font-size:11px; margin-bottom:6px;"></div>
+        <div class="meta" style="opacity:0.6; font-style:italic;">…<span id="relecture-contexte"></span>…</div>
+      </div>
+      <div style="margin:8px 0;">
+        <div class="meta" style="margin-bottom:4px;" data-i18n="propositions">Propositions :</div>
+        <div id="relecture-propositions" style="display:flex; flex-wrap:wrap; gap:2px;"></div>
+      </div>
+      <div style="display:flex; gap:4px; margin-top:10px;">
+        <button class="modal-btn secondary" onclick="ignorerFautePanier()" style="flex:1;" data-i18n="ignorer">Ignorer</button>
+        <button class="modal-btn secondary" onclick="ajouterMotDicoPanier()" style="flex:1;">➕ <span data-i18n="dico_ajouter">Dico</span></button>
+        <button class="modal-btn" onclick="validerRelecture()" style="flex:1;" data-i18n="terminer">Terminer</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer, clipboard } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+    const http = require('http');
+    const { spawn } = require('child_process');
+    const { TEXTES, LANGUE_DEFAUT } = require('./langues.js');
+
+    let isRecording = false;
+    let isTranscribing = false;
+    let currentLang = 'fr';        // langue de TRANSCRIPTION (Whisper)
+    let interfaceLang = 'fr';      // langue de l'INTERFACE (menus, boutons)
+    let T = TEXTES[LANGUE_DEFAUT]; // raccourci vers les textes actuels
+    let appConfig = null;
+
+    // ==========================================
+    // CONFIG (chargement asynchrone au démarrage)
+    // ==========================================
+    async function initConfig() {
+      appConfig = await ipcRenderer.invoke('config-get');
+      currentLang = appConfig.language || 'fr';
+      document.getElementById('lang-select').value = currentLang;
+    }
+
+    // ==========================================
+    // LANGUE DE L'INTERFACE
+    // ==========================================
+    // Applique une langue d'interface : met à jour T et tous les textes du DOM
+    function setInterfaceLang(code) {
+      interfaceLang = code;
+      T = TEXTES[code] || TEXTES[LANGUE_DEFAUT];
+      document.documentElement.lang = code;
+      // Met à jour tous les éléments portant l'attribut data-i18n
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (T[key] !== undefined) el.textContent = T[key];
+      });
+      // Met à jour les placeholders / titres
+      document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        const key = el.getAttribute('data-i18n-title');
+        if (T[key] !== undefined) el.title = T[key];
+      });
+    }
+
+    // ==========================================
+    // GESTION DES SAUVEGARDES + HISTORIQUE
+    // ==========================================
+    const sauvegardesDir = path.join(__dirname, 'Sauvegardes');
+    const textesDir = path.join(sauvegardesDir, 'Textes');
+    const waveDir = path.join(sauvegardesDir, 'WAVE');
+    const tempDir = path.join(__dirname, 'temp');
+    let noteCourante = null;
+    let historyIndex = -1; // -1 = note nouvelle/en cours ; >=0 = navigation dans l'historique
+    let derniereTranscriptionPos = 0; // position de départ du dernier bloc dicté (pour COPIER)
+    let modeAudioArme = false; // mode "Sauvegarde et Audio" armé ou non
+    let modeTraduction = false; // mode "Traduire vers l'anglais" (flag -tr de Whisper)
+    let modeWebhook = false;    // mode "Envoi webhook n8n" armé (auto-envoi après chaque dictée)
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function getDayFolder() {
+      const d = new Date();
+      return path.join(textesDir, `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+    }
+    function getTimePrefix() {
+      const d = new Date();
+      return `${pad(d.getHours())}-${pad(d.getMinutes())}`;
+    }
+
+    function creerNouvelleNote() {
+      const dayFolder = getDayFolder();
+      fs.mkdirSync(dayFolder, { recursive: true });
+      const prefix = getTimePrefix();
+      let fileName = `${prefix}.txt`, counter = 2;
+      while (fs.existsSync(path.join(dayFolder, fileName))) { fileName = `${prefix}-${counter}.txt`; counter++; }
+      noteCourante = path.join(dayFolder, fileName);
+    }
+
+    function sauvegarderNoteCourante() {
+      const text = document.getElementById('text-output').value.trim();
+      if (!text) return false;
+      if (!noteCourante) creerNouvelleNote();
+      try { fs.writeFileSync(noteCourante, text, 'utf8'); return true; }
+      catch (e) { return false; }
+    }
+
+    // Liste toutes les notes sauvegardées (par ordre chrono inverse)
+    function listAllNotes() {
+      const notes = [];
+      try {
+        if (!fs.existsSync(textesDir)) return notes;
+        const days = fs.readdirSync(textesDir).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse();
+        for (const day of days) {
+          const dayPath = path.join(textesDir, day);
+          const files = fs.readdirSync(dayPath).filter(f => /\.txt$/.test(f)).sort().reverse();
+          for (const f of files) notes.push(path.join(dayPath, f));
+        }
+      } catch (e) {}
+      return notes;
+    }
+
+    function navHistory(dir) {
+      const notes = listAllNotes();
+      if (notes.length === 0) { flash('Aucune note sauvegardée'); return; }
+      if (historyIndex === -1) {
+        // On part de la note courante ou de la dernière
+        historyIndex = 0;
+      } else {
+        historyIndex += dir;
+      }
+      if (historyIndex < 0) historyIndex = 0;
+      if (historyIndex >= notes.length) { historyIndex = notes.length - 1; }
+      const notePath = notes[historyIndex];
+      try {
+        const content = fs.readFileSync(notePath, 'utf8');
+        document.getElementById('text-output').value = content;
+        noteCourante = notePath; // On édite cette note
+        updateNavInfo(notes);
+      } catch (e) { flash('Erreur lecture note'); }
+    }
+
+    function updateNavInfo(notes) {
+      const info = document.getElementById('nav-info');
+      if (!notes) notes = listAllNotes();
+      if (historyIndex === -1) {
+        info.textContent = T.nouvelle_note;
+      } else if (notes.length > 0) {
+        info.textContent = `${historyIndex + 1} / ${notes.length}`;
+      } else {
+        info.textContent = T.nouvelle_note;
+      }
+      document.getElementById('nav-prev').disabled = (historyIndex <= 0);
+      document.getElementById('nav-next').disabled = (historyIndex >= notes.length - 1);
+    }
+
+    function clearNote() {
+      if (noteCourante && fs.existsSync(noteCourante)) {
+        try { fs.unlinkSync(noteCourante); } catch (e) {}
+      }
+      noteCourante = null;
+      historyIndex = -1;
+      derniereTranscriptionPos = 0;
+      derniereTranscriptionPos = 0;
+      document.getElementById('text-output').value = '';
+      updateNavInfo();
+      flash(T.ecran_efface);
+    }
+
+    function openFolder() {
+      fs.mkdirSync(sauvegardesDir, { recursive: true });
+      ipcRenderer.send('open-folder', sauvegardesDir);
+    }
+
+    // ==========================================
+    // INSERTION DE FICHIERS (📎 texte/Excel/Word/PDF)
+    // ==========================================
+    // Insère le CONTENU d'un fichier à la suite du texte (et non en pièce jointe).
+    function insererFichier() {
+      if (isTranscribing) return;
+      ipcRenderer.send('dialog-open-file');
+    }
+
+    ipcRenderer.on('files-selected', async (_event, files) => {
+      if (!files || files.length === 0) return;
+      const output = document.getElementById('text-output');
+      const extsTexte = ['.txt', '.json', '.md', '.csv', '.js', '.py', '.html', '.css', '.xml', '.log'];
+      const extsExcel = ['.xlsx', '.xls', '.ods'];
+      const extsWord = ['.docx', '.doc'];
+      const extsPdf = ['.pdf'];
+      let inserted = 0;
+      for (const filePath of files) {
+        const ext = path.extname(filePath).toLowerCase();
+        try {
+          let contenu = '';
+          if (extsTexte.includes(ext)) {
+            // Fichier texte simple
+            contenu = fs.readFileSync(filePath, 'utf8');
+          } else if (extsExcel.includes(ext)) {
+            // Excel / tableur via SheetJS
+            const XLSX = require('xlsx');
+            const wb = XLSX.readFile(filePath);
+            // Concatène toutes les feuilles en tableau texte (tabulé)
+            contenu = wb.SheetNames.map(nom => {
+              const feuille = wb.Sheets[nom];
+              return XLSX.utils.sheet_to_csv(feuille, { FS: '\t' });
+            }).join('\n');
+          } else if (extsWord.includes(ext)) {
+            // Word via mammoth (.docx uniquement ; .doc ancien non supporté par mammoth)
+            if (ext === '.doc') {
+              flash(path.basename(filePath) + ' : .doc ancien non supporté (.docx oui)');
+              continue;
+            }
+            const mammoth = require('mammoth');
+            const resultat = await mammoth.extractRawText({ path: filePath });
+            contenu = resultat.value;
+          } else if (extsPdf.includes(ext)) {
+            // PDF texte via pdf-parse (ne marche pas sur les PDF scannés)
+            const pdfParse = require('pdf-parse');
+            const dataBuffer = fs.readFileSync(filePath);
+            const data = await pdfParse(dataBuffer);
+            contenu = data.text;
+          } else {
+            flash(path.basename(filePath) + ' : ' + T.pas_fichier_texte);
+            continue;
+          }
+          if (contenu.trim()) {
+            output.value += '\n' + contenu + '\n';
+            inserted++;
+          }
+        } catch (e) {
+          flash(T.erreur_lecture + ' ' + path.basename(filePath) + ' : ' + e.message);
+        }
+      }
+      if (inserted > 0) {
+        output.scrollTop = output.scrollHeight;
+        sauvegarderNoteCourante();
+        flash(inserted + ' ' + T.fichier_insere);
+      }
+    });
+
+    // ==========================================
+    // TOAST (notification discrète)
+    // ==========================================
+    let flashTimer = null;
+    function flash(msg) {
+      const el = document.getElementById('flash');
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => { el.classList.remove('show'); }, 1500);
+    }
+
+    // ==========================================
+    // DÉTECTION WHISPER
+    // ==========================================
+    const whisperDir = path.join(__dirname, 'Whisper');
+    function checkWhisper() {
+      try {
+        if (!fs.existsSync(whisperDir)) return { ready: false, missing: 'le dossier Whisper' };
+        const hasExe = fs.existsSync(path.join(whisperDir, 'main.exe'));
+        if (!hasExe) return { ready: false, missing: 'main.exe (archive cli.zip)' };
+        const files = fs.readdirSync(whisperDir);
+        const model = files.find(f => /^ggml-.+\.bin$/i.test(f));
+        if (!model) return { ready: false, missing: 'un modèle (fichier ggml-*.bin)' };
+        return { ready: true, modelPath: path.join(whisperDir, model), modelName: model };
+      } catch (e) { return { ready: false, missing: 'le dossier Whisper (erreur lecture)' }; }
+    }
+
+    function updateModelLabel() {
+      const w = checkWhisper();
+      const el = document.getElementById('model-label');
+      if (w.ready) el.textContent = T.modele + ': ' + w.modelName;
+      else el.innerHTML = '<span style="color:#f38ba8">' + T.modele_manquant + '</span>';
+    }
+
+    // ==========================================
+    // CAPTURE MICRO + VU METER
+    // ==========================================
+    let audioCtx = null, mediaStream = null, sourceNode = null, recorderNode = null, analyser = null;
+    let recordedSamples = null, vuRaf = null;
+
+    const WORKLET_CODE = `
+      class RecorderProcessor extends AudioWorkletProcessor {
+        constructor() {
+          super(); this.chunks = []; this.recording = false;
+          this.port.onmessage = (e) => {
+            if (e.data === 'start') { this.chunks = []; this.recording = true; }
+            else if (e.data === 'stop') {
+              this.recording = false;
+              let total = 0; for (const c of this.chunks) total += c.length;
+              const out = new Float32Array(total); let off = 0;
+              for (const c of this.chunks) { out.set(c, off); off += c.length; }
+              this.port.postMessage({ type: 'result', data: out }, [out.buffer]);
+            }
+          };
+        }
+        process(inputs) {
+          if (this.recording) { const input = inputs[0]; if (input && input[0]) this.chunks.push(new Float32Array(input[0])); }
+          return true;
+        }
+      }
+      registerProcessor('recorder-processor', RecorderProcessor);
+    `;
+
+    async function demarrerCapture() {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      audioCtx = new AudioContext({ sampleRate: 16000 });
+      const blob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      await audioCtx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+      recorderNode = new AudioWorkletNode(audioCtx, 'recorder-processor');
+      // Analyseur pour le VU meter
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      sourceNode.connect(analyser);
+      sourceNode.connect(recorderNode);
+      recorderNode.port.onmessage = (e) => { if (e.data && e.data.type === 'result') recordedSamples = e.data.data; };
+      recorderNode.port.postMessage('start');
+      startVU();
+    }
+
+    function startVU() {
+      const fill = document.getElementById('vu-fill');
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        if (!analyser) return;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / data.length);
+        fill.style.width = Math.min(100, rms * 300) + '%';
+        vuRaf = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
+    function stopVU() {
+      if (vuRaf) cancelAnimationFrame(vuRaf);
+      vuRaf = null;
+      document.getElementById('vu-fill').style.width = '0%';
+    }
+
+    function arreterCapture() {
+      stopVU();
+      return new Promise((resolve) => {
+        const finish = () => {
+          try { if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+          try { if (audioCtx) audioCtx.close(); } catch (e) {}
+          audioCtx = null; mediaStream = null; sourceNode = null; recorderNode = null; analyser = null;
+          resolve();
+        };
+        if (recorderNode) { recorderNode.port.postMessage('stop'); setTimeout(finish, 200); }
+        else finish();
+      });
+    }
+
+    function encoderWav(samples, sampleRate) {
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+      const ws = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+      ws(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); ws(8, 'WAVE');
+      ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+      ws(36, 'data'); view.setUint32(40, samples.length * 2, true);
+      let off = 44;
+      for (let i = 0; i < samples.length; i++) { let s = Math.max(-1, Math.min(1, samples[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); off += 2; }
+      return Buffer.from(buffer);
+    }
+
+    // ==========================================
+    // APPEL WHISPER
+    // ==========================================
+    function lancerWhisper(wavPath, modelPath, translate) {
+      return new Promise((resolve, reject) => {
+        const exePath = path.join(whisperDir, 'main.exe');
+        const langArg = currentLang === 'auto' ? 'auto' : currentLang;
+        // -l auto = détection auto de la langue source. -tr = traduire vers l'anglais.
+        const args = ['-m', modelPath, '-l', langArg, '-otxt', '-nc', '-nt', '-mc', '0'];
+        if (translate) args.push('-tr');
+        args.push(wavPath);
+        const child = spawn(exePath, args, { cwd: whisperDir, windowsHide: true });
+        let stdout = '', stderr = '';
+        child.stdout.on('data', d => { stdout += d.toString(); });
+        child.stderr.on('data', d => { stderr += d.toString(); });
+        let done = false;
+        const timer = setTimeout(() => { if (!done) { done = true; try { child.kill(); } catch (e) {} reject(new Error('Timeout 60s')); } }, 60000);
+        child.on('error', (err) => { if (done) return; done = true; clearTimeout(timer); reject(new Error('main.exe : ' + err.message)); });
+        child.on('close', (code) => {
+          if (done) return; done = true; clearTimeout(timer);
+          // Whisper crée un fichier .txt SANS l'extension .wav :
+          // dictee.wav -> dictee.txt   (et non dictee.wav.txt)
+          const txtPath = wavPath.replace(/\.wav$/i, '.txt');
+          try {
+            const text = fs.readFileSync(txtPath, 'utf8').trim();
+            resolve(text);
+            return;
+          } catch (e) {
+            // Le .txt n'existe pas : on affiche TOUT ce que Whisper a dit pour diagnostiquer
+            const diag = (stdout + '\n' + stderr).slice(-300);
+            reject(new Error('code ' + code + ' — ' + diag));
+          }
+        });
+      });
+    }
+
+    // Filtre les transcriptions parasites de Whisper (bruits non-parlés)
+    // Supprime les lignes comme [Bruit de la salle], [Son], [Musique], [Audio], etc.
+    function filtrerBruit(texte) {
+      if (!texte) return '';
+      const lignes = texte.split('\n');
+      const filtres = [
+        /^\s*\[?\s*(bruit|son|musique|audio|silence|générique|applaudissement)/i,
+        /^\s*\[\s*(bruit|son|musique|audio|silence)/i
+      ];
+      const gardees = lignes.filter(l => {
+        const t = l.trim();
+        if (!t) return true; // garde les lignes vides
+        for (const f of filtres) if (f.test(t)) return false;
+        return true;
+      });
+      return gardees.join('\n').trim();
+    }
+
+    // Sauvegarde l'audio + le texte dans un dossier dédié WAVE/<date_heure>/
+    function sauvegarderAudioTexte(wavPath, texte) {
+      try {
+        fs.mkdirSync(waveDir, { recursive: true });
+        const d = new Date();
+        const nomDossier = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
+        const dossier = path.join(waveDir, nomDossier);
+        fs.mkdirSync(dossier, { recursive: true });
+        fs.copyFileSync(wavPath, path.join(dossier, 'audio.wav'));
+        fs.writeFileSync(path.join(dossier, 'transcription.txt'), texte, 'utf8');
+        flash(T.audio_garde);
+      } catch (e) {
+        flash(T.erreur_audio);
+      }
+    }
+
+    // ==========================================
+    // CORRECTION D'ORTHOGRAPHE — Appel LanguageTool (Phase 1.2)
+    // ==========================================
+    // Mode de correction : 'off' | 'auto' | 'semi'. Défaut 'off' (sûr).
+    let modeCorrection = 'off';
+
+    // Appelle l'API LanguageTool locale (POST /v2/check).
+    // Retourne un tableau de { offset, length, message, replacements, context } ou [] si serveur off.
+    function appelerLanguageTool(texte, langue) {
+      return new Promise((resolve) => {
+        const postData = 'language=' + encodeURIComponent(langue || 'fr') +
+                         '&text=' + encodeURIComponent(texte) +
+                         '&level=default';
+        const req = http.request({
+          host: 'localhost', port: 8081, path: '/v2/check', method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(postData) },
+          timeout: 8000
+        }, (res) => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              let matches = (json.matches || []).map(m => ({
+                offset: m.offset, length: m.length,
+                message: m.message,
+                replacements: (m.replacements || []).map(r => r.value),
+                context: m.context && m.context.text ? m.context.text : '',
+                ruleId: m.rule ? m.rule.id : ''
+              }));
+              // Filtre les "fautes" dont le mot fautif est dans le dictionnaire personnel
+              if (dicoPerso.length > 0) {
+                matches = matches.filter(m => {
+                  const motFautif = texte.substr(m.offset, m.length).trim().toLowerCase();
+                  return !dicoPerso.includes(motFautif);
+                });
+              }
+              resolve(matches);
+            } catch (e) { resolve([]); }
+          });
+        });
+        req.on('error', () => resolve([]));      // serveur off / indisponible
+        req.on('timeout', () => { req.destroy(); resolve([]); });
+        req.write(postData);
+        req.end();
+      });
+    }
+
+    // ==========================================
+    // DICTIONNAIRE PERSONNEL (Phase 1.4)
+    // ==========================================
+    let dicoPerso = []; // mots appris (chargés au démarrage)
+
+    // Ajoute un mot au dictionnaire personnel (depuis le panneau de relecture ➕)
+    async function ajouterAuDictionnaire(mot) {
+      dicoPerso = await ipcRenderer.invoke('dico-add', mot);
+      flash('➕ ' + T.dico_ajoute + ' : ' + mot);
+    }
+
+    // Gestion manuelle du dictionnaire dans ⚙️ : ajout/suppression par lot
+    async function renderDicoPerso() {
+      dicoPerso = await ipcRenderer.invoke('dico-get');
+      const el = document.getElementById('dico-list');
+      if (!el) return;
+      if (dicoPerso.length === 0) {
+        el.innerHTML = '<div class="meta" style="opacity:0.6">' + T.dico_vide + '</div>';
+        return;
+      }
+      el.innerHTML = dicoPerso.map(mot =>
+        '<div class="modal-row" style="padding:4px 8px;"><div>' + mot + '</div>' +
+        '<button class="modal-btn secondary" onclick="retirerDuDictionnaire(\'' + mot.replace(/'/g, "\\'") + '\')">✕</button></div>'
+      ).join('');
+    }
+
+    async function ajouterMotDicoManuel() {
+      const input = document.getElementById('dico-input');
+      const motsSaisis = (input.value || '').split(/[\s,;\n]+/).map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
+      for (const mot of motsSaisis) {
+        dicoPerso = await ipcRenderer.invoke('dico-add', mot);
+      }
+      input.value = '';
+      renderDicoPerso();
+    }
+
+    async function retirerDuDictionnaire(mot) {
+      dicoPerso = await ipcRenderer.invoke('dico-remove', mot);
+      renderDicoPerso();
+    }
+
+    // Applique les corrections AUTOMATIQUES : uniquement les fautes qui proposent
+    // un SEUL remplacement non ambigu (ex: orthographe évidente). Les fautes
+    // ambiguës (plusieurs propositions, ou règles de grammaire) sont ignorées en auto.
+    // Retourne { texte, nbCorrige, restantes: [...] }.
+    function appliquerCorrectionsAuto(texte, matches) {
+      // Trie DESC par offset pour pouvoir remplacer sans casser les positions
+      const certains = matches
+        .filter(m => m.replacements && m.replacements.length === 1)
+        .sort((a, b) => b.offset - a.offset);
+      let result = texte;
+      let nbCorrige = 0;
+      const offsetsUtilises = new Set();
+      for (const m of certains) {
+        result = result.slice(0, m.offset) + m.replacements[0] + result.slice(m.offset + m.length);
+        nbCorrige++;
+        offsetsUtilises.add(m.offset);
+      }
+      // Les fautes non corrigées (ambiguës ou 0 proposition) restent pour le panneau
+      const restantes = matches.filter(m => !offsetsUtilises.has(m.offset));
+      return { texte: result, nbCorrige, restantes };
+    }
+
+    // Mappe la langue du dictaphone (fr/en/es/pt/de/it/auto) vers le code LanguageTool.
+    // 'auto' n'est pas géré par LT côté requête ; on utilise fr par défaut.
+    function mapLangueLT(lang) {
+      const map = { fr: 'fr', en: 'en-US', es: 'es', pt: 'pt', de: 'de-DE', it: 'it' };
+      return map[lang] || 'fr';
+    }
+
+    async function finaliserTranscription() {
+      const output = document.getElementById('text-output');
+      isTranscribing = true; setControlsEnabled(false);
+      flash(T.transcription_en_cours); // notification discrète, pas de texte dans l'écran
+      try {
+        await arreterCapture();
+        if (!recordedSamples || recordedSamples.length === 0) {
+          flash(T.aucun_son);
+          return;
+        }
+        fs.mkdirSync(tempDir, { recursive: true });
+        const wavPath = path.join(tempDir, 'dictee.wav');
+        fs.writeFileSync(wavPath, encoderWav(recordedSamples, 16000));
+        recordedSamples = null;
+        const w = checkWhisper();
+        const texteBrut = await lancerWhisper(wavPath, w.modelPath, modeTraduction);
+        const texte = filtrerBruit(texteBrut); // retire [Bruit de la salle], etc.
+        // Si le mode "Sauvegarde et Audio" est armé, on copie audio + texte dans WAVE
+        // IMPORTANT : on le fait AVANT de supprimer le wav temporaire
+        if (modeAudioArme && texte) {
+          sauvegarderAudioTexte(wavPath, texte);
+        }
+        try { fs.unlinkSync(wavPath); } catch (e) {}
+        try { fs.unlinkSync(wavPath.replace(/\.wav$/i, '.txt')); } catch (e) {}
+        if (texte) {
+          // Mémorise la position de départ de ce bloc (pour le COPIER "dernier seulement")
+          derniereTranscriptionPos = output.value.length;
+          // CORRECTION (Phase 1.2/1.3) : si un mode est actif ET le serveur est up
+          let texteFinal = texte;
+          let matchesRestants = [];
+          if (modeCorrection !== 'off' && ltStatus.serverUp) {
+            try {
+              const matches = await appelerLanguageTool(texte, mapLangueLT(currentLang));
+              if (matches.length > 0) {
+                if (modeCorrection === 'auto') {
+                  // Mode auto : applique les corrections certaines en silence
+                  const r = appliquerCorrectionsAuto(texte, matches);
+                  texteFinal = r.texte;
+                  if (r.nbCorrige > 0) flash(r.nbCorrige + ' ' + T.corrections_appliquees);
+                } else if (modeCorrection === 'semi') {
+                  // Mode semi-auto : on insère d'abord le texte brut, puis on ouvre le panneau
+                  matchesRestants = matches;
+                }
+              }
+            } catch (e) { /* échec correction = texte brut silencieux */ }
+          }
+          const insertPos = output.value.length;
+          output.value += texteFinal + "\n";
+          if (sauvegarderNoteCourante()) flash(T.sauvegarde_ok);
+          // Envoi webhook n8n si armé (auto après chaque dictée)
+          if (modeWebhook) envoyerVersWebhook(texteFinal);
+          // Mode semi-auto : ouvre le panneau de relecture (si des fautes restent)
+          if (matchesRestants.length > 0) {
+            relectureEnCours = { texteBase: texte, matches: matchesRestants, indexCourant: 0, insertPos: insertPos, texteOriginalLen: texte.length, resolues: [] };
+            renderPanierRelecture();
+            document.getElementById('relecture-overlay').classList.add('show');
+          }
+        } else flash(T.transcrip_vide);
+      } catch (err) {
+        output.value += "[" + T.erreur_transcrip + "] " + err.message + "\n";
+      } finally {
+        isTranscribing = false; setControlsEnabled(true);
+        output.scrollTop = output.scrollHeight;
+      }
+    }
+
+    function setControlsEnabled(enabled) {
+      ['btn-clear', 'btn-copy', 'btn-folder', 'btn-attach', 'btn-cancel', 'btn-on-off'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !enabled; });
+    }
+
+    // ==========================================
+    // DÉMARRAGE
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', async () => {
+      // 1) Vérifie si une langue d'interface a déjà été choisie
+      const savedLang = await ipcRenderer.invoke('get-langue');
+      if (savedLang) {
+        // Langue déjà choisie -> on démarre directement
+        setInterfaceLang(savedLang);
+        document.getElementById('lang-screen').classList.remove('show');
+        await demarrageNormal();
+      } else {
+        // Premier lancement -> on affiche l'écran de choix de langue
+        // (le démarrage normal attendra la confirmation de l'utilisateur)
+        document.getElementById('lang-screen').classList.add('show');
+      }
+    });
+
+    // Affiche le dictaphone. Si Whisper est prêt, écran vide (pas de bruit).
+    // Un message n'apparaît que si quelque chose manque.
+    async function demarrageNormal() {
+      await initConfig();
+      const output = document.getElementById('text-output');
+      const w = checkWhisper();
+      if (!w.ready) {
+        output.value += "=========================================\n";
+        output.value += T.moteur_manquant + " " + w.missing + "\n";
+        output.value += "=========================================\n";
+        output.value += "👉 " + T.cliquer_engrenage + "\n";
+        output.value += "=========================================\n\n";
+      }
+      // Si prêt : écran vide, juste le placeholder. Aucun bruit visuel.
+      updateModelLabel();
+      updateNavInfo();
+      // Restaure l'état visuel du bouton Traduire (depuis config)
+      modeTraduction = appConfig && appConfig.modeTraduction ? true : false;
+      const btnTr = document.getElementById('btn-translate');
+      if (btnTr) btnTr.classList.toggle('armed', modeTraduction);
+      // Restaure l'état visuel du bouton Webhook (depuis config)
+      modeWebhook = appConfig && appConfig.modeWebhook && appConfig.webhookUrl ? true : false;
+      const btnWh = document.getElementById('btn-webhook');
+      if (btnWh) btnWh.classList.toggle('armed', modeWebhook);
+    }
+
+    // Confirmation du choix de langue (premier lancement)
+    async function confirmerLangue() {
+      const sel = document.getElementById('lang-screen-select');
+      const code = sel.value;
+      await ipcRenderer.invoke('set-langue', code);
+      setInterfaceLang(code);
+      document.getElementById('lang-screen').classList.remove('show');
+      await demarrageNormal();
+    }
+
+    window.addEventListener('beforeunload', () => { if (!isTranscribing) sauvegarderNoteCourante(); });
+
+    // ==========================================
+    // RACCOURCIS CLAVIER
+    // ==========================================
+    ipcRenderer.on('shortcut', (_event, action) => {
+      if (action === 'toggle-mic') toggleMic();
+      else if (action === 'copy') copyText();
+      else if (action === 'clear') clearNote();
+    });
+
+    // ==========================================
+    // BOUTONS BARRE HAUTE
+    // ==========================================
+    function closeApp() { if (!isTranscribing) sauvegarderNoteCourante(); ipcRenderer.send('close-window'); }
+    function minimizeApp() { ipcRenderer.send('minimize-window'); }
+    function maximizeApp() { ipcRenderer.send('maximize-window'); }
+    function openSettings() { ipcRenderer.send('open-sound-settings'); }
+
+    // Bouton "Sauvegarde et Audio" : arme/désarme le mode
+    function toggleModeAudio() {
+      modeAudioArme = !modeAudioArme;
+      const btn = document.getElementById('btn-audio');
+      if (btn) btn.classList.toggle('armed', modeAudioArme);
+      flash(modeAudioArme ? T.audio_arme : T.audio_desarme);
+    }
+
+    // Bouton "🌐 Traduire" : arme/désarme le mode traduction vers l'anglais (flag -tr)
+    function toggleModeTraduction() {
+      modeTraduction = !modeTraduction;
+      const btn = document.getElementById('btn-translate');
+      if (btn) btn.classList.toggle('armed', modeTraduction);
+      ipcRenderer.invoke('config-set', { modeTraduction: modeTraduction });
+      flash(modeTraduction ? T.traduire_arme : T.traduire_desarme);
+    }
+
+    // Bouton "📤 Envoyer" : arme/désarme l'envoi webhook n8n (auto après chaque dictée)
+    function toggleModeWebhook() {
+      if (!appConfig || !appConfig.webhookUrl) {
+        flash(T.webhook_non_config);
+        openUpdatePanel(); // ouvre ⚙️ pour configurer l'URL
+        return;
+      }
+      modeWebhook = !modeWebhook;
+      const btn = document.getElementById('btn-webhook');
+      if (btn) btn.classList.toggle('armed', modeWebhook);
+      ipcRenderer.invoke('config-set', { modeWebhook: modeWebhook });
+      flash(modeWebhook ? T.webhook_arme : T.webhook_desarme);
+    }
+
+    // Envoie le texte vers le webhook configuré (appelé après chaque dictée si armé)
+    async function envoyerVersWebhook(texte) {
+      if (!appConfig || !appConfig.webhookUrl || !texte) return;
+      const r = await ipcRenderer.invoke('webhook-send', {
+        url: appConfig.webhookUrl,
+        token: appConfig.webhookToken || '',
+        texte: texte,
+        langue: currentLang
+      });
+      if (r.ok) flash(T.webhook_envoye);
+      else flash(T.webhook_echec + ' : ' + (r.error || r.status));
+    }
+
+    // Sauvegarde l'URL + token du webhook dans config.json
+    async function sauverWebhookConfig() {
+      const url = document.getElementById('webhook-url').value.trim();
+      const token = document.getElementById('webhook-token').value.trim();
+      appConfig = await ipcRenderer.invoke('config-set', { webhookUrl: url, webhookToken: token });
+      flash(T.webhook_sauve_ok);
+    }
+
+    // Teste la connexion au webhook (envoie un payload de test)
+    async function testerWebhook() {
+      const url = document.getElementById('webhook-url').value.trim();
+      const token = document.getElementById('webhook-token').value.trim();
+      if (!url) { flash(T.webhook_non_config); return; }
+      flash(T.webhook_test_encours);
+      const r = await ipcRenderer.invoke('webhook-test', { url: url, token: token });
+      flash(r.ok ? T.webhook_test_ok : T.webhook_echec + ' : ' + (r.error || r.status));
+    }
+
+    function copyText() {
+      const output = document.getElementById('text-output');
+      let text;
+      // Priorité 1 : si l'utilisateur a sélectionné du texte, on copie la sélection
+      const start = output.selectionStart, end = output.selectionEnd;
+      if (end > start) {
+        text = output.value.substring(start, end);
+      } else if (historyIndex >= 0) {
+        // Priorité 2 : si on navigue dans l'historique, on copie la note entière affichée
+        text = output.value;
+      } else if (derniereTranscriptionPos > 0 || output.value.length > 0) {
+        // Priorité 3 : on copie seulement le dernier bloc dicté (depuis derniereTranscriptionPos)
+        text = output.value.substring(derniereTranscriptionPos).trim();
+      }
+      if (text) {
+        clipboard.writeText(text);
+        const btn = document.getElementById('btn-copy');
+        const oldText = btn.innerText;
+        btn.innerText = T.copie_ok;
+        setTimeout(() => { btn.innerText = oldText; }, 1500);
+      }
+    }
+
+    async function toggleMic() {
+      if (isTranscribing) return;
+      const btn = document.getElementById('btn-on-off');
+      const output = document.getElementById('text-output');
+      if (!isRecording) {
+        const w = checkWhisper();
+        if (!w.ready) { output.value += "[ERREUR] : " + T.moteur_manquant + " " + w.missing + ". ⚙️.\n"; output.scrollTop = output.scrollHeight; return; }
+        try {
+          await demarrerCapture();
+          isRecording = true; btn.classList.add('active'); btn.innerText = T.enregistrement;
+          // Pas de message "Micro activé" : silence visuel
+        } catch (err) { output.value += "[ERREUR MICRO] : " + err.message + "\n"; }
+      } else {
+        isRecording = false; btn.classList.remove('active'); btn.innerText = T.on_off;
+        // Pas de message "Micro arrêté" : silence visuel
+        await finaliserTranscription();
+      }
+      output.scrollTop = output.scrollHeight;
+    }
+
+    async function cancelRecording() {
+      if (isRecording) {
+        isRecording = false;
+        document.getElementById('btn-on-off').classList.remove('active');
+        document.getElementById('btn-on-off').innerText = T.on_off;
+        await arreterCapture(); recordedSamples = null;
+        // Pas de message : silencieux
+      }
+    }
+
+    // ==========================================
+    // PANNEAU MAJ + MODÈLES (Phase 6)
+    // ==========================================
+    let currentModel = '';
+
+    function openUpdatePanel() { renderModal(); document.getElementById('modal').classList.add('show'); }
+    function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+    async function renderModal() {
+      const content = document.getElementById('modal-content');
+      const gpu = await ipcRenderer.invoke('get-gpu');
+      const w = checkWhisper();
+      currentModel = w.ready ? w.modelName : '';
+      const hasExe = fs.existsSync(path.join(whisperDir, 'main.exe'));
+      const data = await ipcRenderer.invoke('list-models');
+      document.getElementById('modal-titre').textContent = T.titre_modale;
+      content.innerHTML = `
+        <div class="modal-row"><div><b>${T.langue}</b><div class="meta">${TEXTES[interfaceLang].nom}</div></div>
+          <select id="iface-lang-select" onchange="changerLangueInterface(this.value)" style="background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px; cursor:pointer;">
+            <option value="fr">🇫🇷 Français</option>
+            <option value="en">🇬🇧 English</option>
+            <option value="es">🇪🇸 Español</option>
+            <option value="pt">🇵🇹 Português</option>
+            <option value="de">🇩🇪 Deutsch</option>
+            <option value="it">🇮🇹 Italiano</option>
+          </select>
+        </div>
+        <div class="modal-row"><div><b>${T.gpu_detecte}</b><div class="meta">${gpu}</div></div></div>
+        <div class="modal-row"><div><b>${T.correcteur_ortho}</b><div class="meta" id="lt-status-meta">${T.chargement}</div><div class="progress-bar" id="prog-lt" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div><button class="modal-btn" id="lt-btn" onclick="installCorrecteur()">${T.installer}</button></div>
+        <div class="modal-row"><div><b>${T.mode_correction}</b><div class="meta">${T.mode_correction_info}</div></div>
+          <select id="lt-mode-select" onchange="changerModeCorrection(this.value)" style="background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px; cursor:pointer;">
+            <option value="off">${T.mode_off}</option>
+            <option value="auto">${T.mode_auto}</option>
+            <option value="semi">${T.mode_semi}</option>
+          </select>
+        </div>
+        <div class="modal-row" style="flex-direction:column; align-items:stretch;">
+          <div><b>➕ ${T.dico_personnel}</b><div class="meta">${T.dico_info}</div></div>
+          <div style="display:flex; gap:4px; margin-top:6px;">
+            <input id="dico-input" placeholder="${T.dico_placeholder}" style="flex:1; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
+            <button class="modal-btn" onclick="ajouterMotDicoManuel()">${T.ajouter}</button>
+          </div>
+          <div id="dico-list" style="margin-top:6px; max-height:120px; overflow-y:auto;"></div>
+        </div>
+        <div class="modal-row" style="flex-direction:column; align-items:stretch;">
+          <div><b>📤 ${T.webhook_titre}</b><div class="meta">${T.webhook_info}</div></div>
+          <input id="webhook-url" placeholder="${T.webhook_placeholder}" value="${appConfig && appConfig.webhookUrl ? appConfig.webhookUrl : ''}" style="margin-top:6px; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
+          <input id="webhook-token" placeholder="${T.webhook_token_ph}" value="${appConfig && appConfig.webhookToken ? appConfig.webhookToken : ''}" style="margin-top:4px; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
+          <div style="display:flex; gap:4px; margin-top:6px;">
+            <button class="modal-btn" onclick="sauverWebhookConfig()" style="flex:1;">💾 ${T.webhook_sauver}</button>
+            <button class="modal-btn secondary" onclick="testerWebhook()" style="flex:1;">🔌 ${T.webhook_tester}</button>
+          </div>
+        </div>
+        <div class="modal-row"><div><b>${T.application}</b><div class="meta">${T.version} ${appConfig ? appConfig.appVersion : '?'}</div></div><button class="modal-btn" onclick="checkAppUpdate()">${T.verifier_maj}</button></div>
+        <div id="app-update-info"></div>
+        <div class="modal-row"><div><b>${T.executable_whisper}</b><div class="meta">${hasExe ? 'main.exe ✔ ' + T.installe : '⚠️ main.exe ' + T.modele_manquant.replace('Modèle','').trim()}</div><div class="meta" style="opacity:0.6">${T.whisper_exe_instruc}</div><div class="progress-bar" id="prog-cli" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div>${hasExe ? `<button class="modal-btn" onclick="checkWhisperExeUpdate()">${T.verifier_maj}</button>` : `<button class="modal-btn" onclick="installCliAuto()">${T.installer_auto}</button>`}</div>
+        <div id="whisper-update-info"></div>
+        <div class="modal-row"><div><b>${T.bouton_redemarrer}</b><div class="meta" style="opacity:0.6">${T.redemarrer_apres}</div></div><button class="modal-btn" style="background:#f38ba8;color:#1e1e2e;" onclick="redemarrerApp()">${T.bouton_redemarrer}</button></div>
+        <div style="margin: 15px 0 8px; font-size: 12px; opacity: 0.8;">${T.tableau_modeles}</div>
+        <table class="models-table">
+          <thead>
+            <tr><th>${T.modele}</th><th class="vram-cell">VRAM</th><th>FR</th><th>EN</th><th>ES/IT</th><th>PT/DE</th><th>⭐</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>tiny</td><td class="vram-cell">⚠️ ~1 Go</td><td>❌</td><td>⚠️</td><td>❌</td><td>❌</td><td>—</td></tr>
+            <tr><td>base</td><td class="vram-cell">⚠️ ~1 Go</td><td>⚠️</td><td>✅</td><td>⚠️</td><td>❌</td><td>—</td></tr>
+            <tr><td>small</td><td class="vram-cell">⚠️ ~2 Go</td><td>✅</td><td>✅</td><td>✅</td><td>⚠️</td><td>⭐</td></tr>
+            <tr><td>medium</td><td class="vram-cell">⚠️ ~5 Go</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+            <tr><td>large-v3</td><td class="vram-cell">⚠️ ~10 Go</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+          </tbody>
+        </table>
+        <div class="vram-tooltip" id="vram-tooltip">${T.tooltip_vram}</div>
+        <div style="margin: 15px 0 8px; font-size: 12px; opacity: 0.8;">${T.telechargement_gestion}</div>
+        <div id="models-list"></div>
+      `;
+      renderModelsList(data);
+      // Active l'info-bulle VRAM au survol
+      const cells = document.querySelectorAll('.vram-cell');
+      const tooltip = document.getElementById('vram-tooltip');
+      cells.forEach(cell => {
+        cell.addEventListener('mouseenter', () => { tooltip.classList.add('show'); });
+        cell.addEventListener('mouseleave', () => { tooltip.classList.remove('show'); });
+      });
+      // Préselectionne la langue d'interface actuelle
+      const sel = document.getElementById('iface-lang-select');
+      if (sel) sel.value = interfaceLang;
+      // Statut du correcteur (asynchrone — met à jour le bouton + le texte meta)
+      checkLtStatus();
+      // Préselectionne le mode de correction actuel
+      const modeSel = document.getElementById('lt-mode-select');
+      if (modeSel) modeSel.value = modeCorrection;
+      // Affiche le dictionnaire personnel
+      renderDicoPerso();
+    }
+
+    // Change la langue d'interface depuis le panneau ⚙️
+    async function changerLangueInterface(code) {
+      await ipcRenderer.invoke('set-langue', code);
+      setInterfaceLang(code);
+      // Re-render la modale pour mettre à jour tous ses textes
+      renderModal();
+      flash(TEXTES[code].nom);
+    }
+
+    // Redémarre l'app (pour prise en compte d'un nouveau main.exe ou modèle)
+    function redemarrerApp() {
+      if (!isTranscribing && !isRecording) {
+        sauvegarderNoteCourante();
+        ipcRenderer.send('relaunch-app');
+      } else {
+        flash('Patientez fin transcription');
+      }
+    }
+
+    function renderModelsList(data) {
+      const el = document.getElementById('models-list');
+      if (!el) return;
+      el.innerHTML = data.models.map(m => {
+        const fileName = 'ggml-' + m.id + '.bin';
+        const installed = data.installed.includes(fileName);
+        const active = currentModel === fileName;
+        const badge = active ? `<span class="badge-active">${T.actif}</span>` : (installed ? `<span class="badge-installed">${T.installe}</span>` : '');
+        const star = m.recommended ? '⭐ ' : '';
+        return `<div class="modal-row">
+          <div><b>${star}${m.name}</b> ${badge}<div class="meta">${m.size} • ${m.quality} • VRAM ${m.vram}</div><div class="progress-bar" id="prog-${m.id}" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div>
+          ${active ? `<button class="modal-btn secondary" disabled>${T.actif}</button>` :
+            installed ? `<button class="modal-btn secondary" onclick="deleteModel('${fileName}')">${T.supprimer}</button>` :
+            `<button class="modal-btn" onclick="downloadModel('${m.id}')">${T.telecharger}</button>`}
+        </div>`;
+      }).join('');
+    }
+
+    function checkAppUpdate() {
+      const info = document.getElementById('app-update-info');
+      info.innerHTML = `<div class="modal-row"><div class="meta">${T.verification}</div></div>`;
+      ipcRenderer.send('check-app-update');
+    }
+    function checkWhisperExeUpdate() {
+      const info = document.getElementById('whisper-update-info');
+      info.innerHTML = `<div class="modal-row"><div class="meta">${T.verification}</div></div>`;
+      ipcRenderer.send('check-whisper-update');
+    }
+
+    ipcRenderer.on('update-result', (_e, r) => {
+      if (r.type === 'app') {
+        const info = document.getElementById('app-update-info');
+        const dot = document.getElementById('update-dot');
+        if (r.error) {
+          if (info) info.innerHTML = `<div class="modal-row"><div class="meta" style="color:#f38ba8">Erreur : ${r.error}</div></div>`;
+          return;
+        }
+        if (r.hasUpdate) {
+          if (dot) dot.classList.add('show');
+          if (info) info.innerHTML = `<div class="modal-row"><div><b>MAJ dispo : v${r.latest}</b> (vous avez v${r.current})<div class="meta">Voir les notes sur GitHub</div></div><button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">Ouvrir</button></div>`;
+        } else if (!r.silent) {
+          if (info) info.innerHTML = `<div class="modal-row"><div class="meta">À jour (v${r.current})</div></div>`;
+        } else {
+          if (info) info.innerHTML = '';
+        }
+      } else if (r.type === 'whisper-exe') {
+        const info = document.getElementById('whisper-update-info');
+        if (r.error) { if (info) info.innerHTML = `<div class="modal-row"><div class="meta" style="color:#f38ba8">Erreur : ${r.error}</div></div>`; return; }
+        if (info) info.innerHTML = `<div class="modal-row"><div><b>Dernière version : ${r.latest}</b><div class="meta">Téléchargez le nouveau cli.zip et remplacez main.exe</div></div><button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">Ouvrir</button></div>`;
+      }
+    });
+
+    // Installation automatique de main.exe (cli.zip)
+    function installCliAuto() {
+      ipcRenderer.send('install-cli');
+    }
+    ipcRenderer.on('install-cli-progress', (_e, r) => {
+      const bar = document.getElementById('prog-cli');
+      if (r.error) { flash(r.error); return; }
+      if (bar) {
+        bar.style.display = 'block';
+        if (r.phase === 'extract') {
+          bar.querySelector('.progress-fill').style.width = '100%';
+          flash(T.extraction);
+        } else if (r.percent !== undefined) {
+          bar.querySelector('.progress-fill').style.width = r.percent + '%';
+        }
+      }
+    });
+    ipcRenderer.on('install-cli-done', (_e, r) => {
+      if (r.ok) flash(T.redemarrage);
+    });
+
+    function downloadModel(modelId) {
+      ipcRenderer.send('download-model', modelId);
+    }
+
+    ipcRenderer.on('download-progress', (_e, r) => {
+      if (r.error) { flash('Erreur téléchargement : ' + r.error); return; }
+      const bar = document.getElementById('prog-' + r.modelId);
+      if (bar) { bar.style.display = 'block'; bar.querySelector('.progress-fill').style.width = r.percent + '%'; }
+    });
+
+    ipcRenderer.on('download-done', async (_e, r) => {
+      flash(T.telecharger + ' OK');
+      const data = await ipcRenderer.invoke('list-models');
+      renderModelsList(data);
+      updateModelLabel();
+    });
+
+    async function deleteModel(fileName) {
+      ipcRenderer.send('delete-model', fileName);
+    }
+    ipcRenderer.on('model-deleted', async (_e, r) => {
+      if (r.ok) flash(T.supprimer + ' OK'); else flash('Erreur : ' + r.error);
+      const data = await ipcRenderer.invoke('list-models');
+      renderModelsList(data);
+      updateModelLabel();
+    });
+
+    // ==========================================
+    // CORRECTEUR D'ORTHOGRAPHE — LanguageTool local (Phase 1.1)
+    // ==========================================
+    let ltStatus = { installed: false, serverUp: false, port: 8081 };
+
+    // Met à jour l'affichage du statut du correcteur dans la modale ⚙️
+    function renderLtStatus() {
+      const meta = document.getElementById('lt-status-meta');
+      const btn = document.getElementById('lt-btn');
+      if (!meta || !btn) return; // modale fermée
+      if (!ltStatus.installed) {
+        meta.innerHTML = '<span style="color:#f9e2af">' + T.correcteur_non_installe + '</span>';
+        btn.textContent = T.installer; btn.disabled = false;
+      } else if (ltStatus.serverUp) {
+        meta.innerHTML = '<span style="color:#a6e3a1">' + T.correcteur_pret + ' (:' + ltStatus.port + ')</span>';
+        btn.textContent = 'OK'; btn.disabled = true;
+      } else {
+        meta.innerHTML = '<span style="color:#f9e2af">' + T.correcteur_installe_off + '</span>';
+        btn.textContent = T.demarrer_serveur; btn.disabled = false;
+      }
+    }
+
+    // Demande le statut au main process et met à jour l'affichage
+    async function checkLtStatus() {
+      ltStatus = await ipcRenderer.invoke('lt-status');
+      renderLtStatus();
+    }
+
+    // Démarre le serveur (si installé mais à l'arrêt)
+    async function startLtServerFromButton() {
+      const btn = document.getElementById('lt-btn');
+      if (btn) { btn.disabled = true; }
+      const r = await ipcRenderer.invoke('lt-start');
+      await checkLtStatus();
+      flash(r.ok ? T.correcteur_pret : T.correcteur_echec);
+    }
+
+    // Lance l'installation (Java + LanguageTool) avec progression
+    function installCorrecteur() {
+      // Si déjà installé mais serveur off → on démarre le serveur
+      if (ltStatus.installed && !ltStatus.serverUp) { startLtServerFromButton(); return; }
+      if (ltStatus.installed && ltStatus.serverUp) return;
+      const btn = document.getElementById('lt-btn');
+      const bar = document.getElementById('prog-lt');
+      if (btn) { btn.disabled = true; }
+      if (bar) { bar.style.display = 'block'; bar.querySelector('.progress-fill').style.width = '0%'; }
+      ipcRenderer.send('install-correcteur');
+    }
+
+    ipcRenderer.on('install-correcteur-progress', (_e, r) => {
+      if (r.error) { flash(r.error); const bar = document.getElementById('prog-lt'); if (bar) bar.style.display = 'none'; checkLtStatus(); return; }
+      const bar = document.getElementById('prog-lt');
+      const meta = document.getElementById('lt-status-meta');
+      if (!bar) return;
+      bar.style.display = 'block';
+      let label = '';
+      if (r.phase === 'java-download') label = T.correcteur_dl_java;
+      else if (r.phase === 'java-extract') label = T.extraction + ' (Java)';
+      else if (r.phase === 'lt-download') label = T.correcteur_dl_lt;
+      else if (r.phase === 'lt-extract') label = T.extraction + ' (LanguageTool)';
+      else if (r.phase === 'server-test') label = T.correcteur_demarrage;
+      if (meta && label) meta.textContent = label;
+      if (r.percent !== undefined) bar.querySelector('.progress-fill').style.width = r.percent + '%';
+      else if (r.phase && r.phase.indexOf('extract') >= 0) bar.querySelector('.progress-fill').style.width = '100%';
+    });
+
+    ipcRenderer.on('install-correcteur-done', (_e, r) => {
+      const bar = document.getElementById('prog-lt');
+      if (bar) bar.style.display = 'none';
+      checkLtStatus();
+      flash(r.ok ? T.correcteur_pret : T.correcteur_echec);
+    });
+
+    // ==========================================
+    // MODE DE CORRECTION + PANNEAU DE RELECTURE (Phase 1.3)
+    // ==========================================
+    // Change le mode de correction et le persiste dans config.json
+    async function changerModeCorrection(nouveauMode) {
+      modeCorrection = nouveauMode;
+      await ipcRenderer.invoke('config-set', { correctionMode: nouveauMode });
+      const labels = { off: T.mode_off, auto: T.mode_auto, semi: T.mode_semi };
+      flash(T.mode_correction + ' : ' + (labels[nouveauMode] || nouveauMode));
+    }
+
+    // État du panneau de relecture (mode semi-auto)
+    // relectureEnCours = { texteBase, matches, indexCourant, insertPos }
+    let relectureEnCours = null;
+
+    // Ouvre le panneau de relecture avec les fautes détectées sur un bloc dicté.
+    // insertPos = position dans le textarea où le texte corrigé sera inséré.
+    function ouvrirPanierRelecture(texte, matches, insertPos) {
+      if (matches.length === 0) return;
+      relectureEnCours = { texteBase: texte, matches: matches.slice(), indexCourant: 0, insertPos: insertPos, resolues: [] };
+      renderPanierRelecture();
+      document.getElementById('relecture-overlay').classList.add('show');
+    }
+
+    function fermerPanierRelecture() {
+      document.getElementById('relecture-overlay').classList.remove('show');
+      relectureEnCours = null;
+    }
+
+    // Affiche la faute courante dans le panneau + les boutons d'action
+    function renderPanierRelecture() {
+      if (!relectureEnCours) return;
+      const rl = relectureEnCours;
+      const m = rl.matches[rl.indexCourant];
+      if (!m) { fermerPanierRelecture(); flash(T.relecture_finie); return; }
+      const num = rl.indexCourant + 1;
+      const total = rl.matches.length;
+      const contexte = m.context || rl.texteBase.substr(m.offset, m.length);
+      // Extrait le mot fautif depuis le contexte (entouré de *)
+      const motFautif = rl.texteBase.substr(m.offset, m.length);
+      document.getElementById('relecture-num').textContent = num + ' / ' + total;
+      document.getElementById('relecture-message').textContent = m.message;
+      document.getElementById('relecture-contexte').textContent = contexte;
+      document.getElementById('relecture-fautif').textContent = motFautif;
+      // Boutons de propositions de remplacement
+      const propositions = document.getElementById('relecture-propositions');
+      propositions.innerHTML = '';
+      (m.replacements || []).slice(0, 5).forEach((rep, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'modal-btn';
+        btn.textContent = rep;
+        btn.style.cssText = 'margin:3px; padding:5px 10px;';
+        btn.onclick = () => appliquerCorrectionPanier(rep);
+        propositions.appendChild(btn);
+      });
+      if (!m.replacements || m.replacements.length === 0) {
+        propositions.innerHTML = '<div class="meta">' + T.aucune_proposition + '</div>';
+      }
+    }
+
+    // Applique une correction choisie, recalcule les offsets restants, faute suivante
+    function appliquerCorrectionPanier(nouveauMot) {
+      if (!relectureEnCours) return;
+      const rl = relectureEnCours;
+      const m = rl.matches[rl.indexCourant];
+      const avant = rl.texteBase.slice(0, m.offset);
+      const apres = rl.texteBase.slice(m.offset + m.length);
+      rl.texteBase = avant + nouveauMot + apres;
+      const delta = nouveauMot.length - m.length;
+      rl.matches.splice(rl.indexCourant, 1);
+      // Ajuste les offsets des fautes suivantes
+      for (let i = rl.indexCourant; i < rl.matches.length; i++) {
+        rl.matches[i].offset += delta;
+      }
+      renderPanierRelecture();
+    }
+
+    // Ignore la faute courante et passe à la suivante
+    function ignorerFautePanier() {
+      if (!relectureEnCours) return;
+      relectureEnCours.indexCourant++;
+      renderPanierRelecture();
+    }
+
+    // Ajoute le mot fautif au dictionnaire personnel, puis passe à la suite
+    async function ajouterMotDicoPanier() {
+      if (!relectureEnCours) return;
+      const rl = relectureEnCours;
+      const m = rl.matches[rl.indexCourant];
+      const mot = rl.texteBase.substr(m.offset, m.length).trim();
+      if (mot) await ajouterAuDictionnaire(mot); // défini en Phase 1.4
+      rl.indexCourant++;
+      renderPanierRelecture();
+    }
+
+    // Valide tout : insère le texte (corrigé ou brut) dans le textarea à insertPos
+    function validerRelecture() {
+      if (!relectureEnCours) return;
+      const rl = relectureEnCours;
+      const output = document.getElementById('text-output');
+      // Remplace la portion brute déjà insérée par la version relue
+      // (le texte brut a été inséré en attendant ; on le remplace)
+      const avant = output.value.slice(0, rl.insertPos);
+      const apres = output.value.slice(rl.insertPos + rl.texteOriginalLen);
+      output.value = avant + rl.texteBase + apres;
+      sauvegarderNoteCourante();
+      fermerPanierRelecture();
+    }
+
+    // Au démarrage de l'app : si le correcteur est installé, on lance le serveur en silence
+    (async () => {
+      // Charge le mode de correction depuis config
+      if (!appConfig) appConfig = await ipcRenderer.invoke('config-get');
+      modeCorrection = appConfig.correctionMode || 'off';
+      // Charge le dictionnaire personnel
+      dicoPerso = await ipcRenderer.invoke('dico-get');
+      // Lance le serveur si installé
+      const st = await ipcRenderer.invoke('lt-status');
+      if (st.installed && !st.serverUp) {
+        ipcRenderer.invoke('lt-start'); // silencieux
+      }
+    })();
+  </script>
+</body>
+</html>
