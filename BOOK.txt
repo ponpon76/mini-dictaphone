@@ -163,8 +163,10 @@ les erreurs compréhensibles. L'utilisateur teste en conditions réelles
 et remonte des bugs précis.
 
 EMPLACEMENTS :
-  - Code source  : D:\program\prog\mini dictaphone\
-  - Installé     : C:\MiniDictaphone\ (lancé via raccourci Bureau)
+  - Code source  : D:\program\prog\mini dictaphone\ (git, là où on CODE)
+  - Installé     : C:\MiniDictaphone\ (là où ponpon 76 LANCE l'app via le
+                   raccourci Bureau). ⚠️ Ces 2 dossiers doivent rester
+                   synchronisés — voir LE PIÈGE #1 ci-dessous.
   - GitHub       : https://github.com/ponpon76/mini-dictaphone (dépôt public open source)
   - Sauvegarde zip : D:\program\IA\ (mini-dictaphone-v1.zip)
   - Jarvis       : C:\AI_Jarvis\Juju-Electron\ (projet suivant, à venir)
@@ -210,12 +212,93 @@ DÉCISIONS ARCHITECTURALES PRISES :
   - La VRAM doit être documentée en pensant aux AUTRES logiciels lourds
     (jeux, IA), pas seulement Jarvis (sinon l'utilisateur lambda se trompe)
 
-MÉTHODE DE COPIE VERS L'INSTALLATION :
-  Après chaque modif dans D:\program\prog\mini dictaphone\, il faut COPIER
-  les fichiers modifiés vers C:\MiniDictaphone\ pour que l'utilisateur
-  puisse tester (il lance via le raccourci Bureau qui pointe sur C:\).
-  Commande : cp "D:/program/prog/mini dictaphone/<fichier>" "C:/MiniDictaphone/"
-  Après modif de package.json, faire : cd C:/MiniDictaphone && npm install
+##############################################################################
+#  ⚠️⚠️⚠️  LE PIÈGE #1 DU PROJET — À LIRE AVANT DE CODER  ⚠️⚠️⚠️
+##############################################################################
+L'utilisateur lance l'app depuis C:\MiniDictaphone\ (raccourci Bureau), PAS
+depuis D:\program\prog\ (la source git).
+
+   SOURCE (git)          INSTALLÉ (testé par ponpon 76)
+   D:\program\prog\   →  C:\MiniDictaphone\
+   (où on code)          (ce que ponpon 76 lance vraiment)
+
+APRÈS CHAQUE MODIF DE CODE, IL FAUT SYNCHRONISER la source vers l'installé.
+Sinon ponpon 76 teste sur une version OBSOLÈTE et croit que le fix ne marche
+pas. C'EST ARRIVÉ en Sessions 3-5 : tous les fixes étaient dans la source
+mais JAMAIS copiés vers C:\ → bugs "non résolus" pendant 3 sessions.
+
+PROCÉDURE OBLIGATOIRE après chaque modif de code (index.html, main.js,
+langues.js, package.json, ou tout .bat/.txt de doc) :
+
+   # 1. Copier les fichiers modifiés (EXCEPTÉ config.json — voir plus bas)
+   cp "D:/program/prog/mini dictaphone/index.html"  "C:/MiniDictaphone/"
+   cp "D:/program/prog/mini dictaphone/main.js"     "C:/MiniDictaphone/"
+   cp "D:/program/prog/mini dictaphone/langues.js"  "C:/MiniDictaphone/"
+   # (+ package.json, MANUEL.txt, BOOK.txt, etc. si modifiés)
+
+   # 2. config.json : JAMAIS D'ÉCRASEMENT par copie brute !
+   #    Le config.json installé contient les réglages perso de ponpon 76
+   #    (correctionMode, modeTraduction, géométrie fenêtre). Il faut faire
+   #    une FUSION ciblée : éditer C:\MiniDictaphone\config.json à la main
+   #    pour ne changer QUE les champs voulus (version, updateRepo...).
+   #    config.json est ignoré par git (.gitignore) — c'est une config locale.
+
+   # 3. Si package.json modifié (nouvelle dépendance) :
+   cd C:/MiniDictaphone && npm install
+
+VÉRIFICATION RAPIDE qu'un fix est bien arrivé dans l'installé :
+   grep -c "derniereTranscriptionPos" "C:/MiniDictaphone/index.html"
+   (doit renvoyer 0 si le fix COPIER Session 5 est bien appliqué)
+
+ATTENTION : l'app doit être FERMÉE avant de copier (fichiers verrouillés).
+
+
+##############################################################################
+#              VERSION COURANTE & DÉTECTION DE MAJ                          #
+##############################################################################
+VERSION ACTUELLE : 1.1.0  (depuis Session 6, 2026-07-02)
+
+La détection de MAJ repose sur l'API GitHub /releases/latest du dépôt
+ponpon76/mini-dictaphone. Pour qu'elle fonctionne il faut :
+  1. Le tag git correspondant (ex: v1.1.0) doit être poussé.
+  2. Une RELEASE GitHub doit exister sur ce tag (titre + notes).
+     -> Sans release, l'API renvoie 404 et la vérif échoue silencieusement.
+  3. config.json (installé) updateRepo = "ponpon76/mini-dictaphone"
+     (le config.json SOURCE reste en placeholder "VOTRE_NOM_GITHUB/..." :
+     c'est intentionnel, pour les autres utilisateurs qui installent l'app).
+
+Le bouton "🔍 Tout vérifier" (panneau ⚙️) lance app + Whisper en parallèle.
+
+
+##############################################################################
+#              OUTILS & WORKFLOW DE DÉVELOPPEMENT                           #
+##############################################################################
+OUTILS INSTALLÉS SUR LE POSTE :
+  - git          : versionnage (dépôt local D:\program\prog\mini dictaphone)
+  - gh (CLI)     : installé en Session 6 à "C:\Program Files\GitHub CLI\gh.exe"
+                   Authentifié en tant que ponpon76 (token en keyring Windows).
+                   NB : pas dans le PATH des shells Git Bash/CMD par défaut →
+                   appeler avec le chemin complet ou faire un export PATH.
+  - electron     : via npm (npm start lance l'app depuis un dossier)
+  - node         : requis pour npm/electron
+
+WORKFLOW COMPLET D'UNE ÉVOLUTION (modifier le code) :
+  1. Coder dans D:\program\prog\mini dictaphone\ (la source git)
+  2. SYNCHRONISER vers C:\MiniDictaphone\ (voir LE PIÈGE #1 ci-dessus)
+  3. ponpon 76 teste et confirme (les 4 points de validation types)
+  4. git add + git commit + git push origin main
+  5. Si nouvelle version :
+       git tag -a v1.X.0 -m "..."
+       git push origin v1.X.0
+       "C:\Program Files\GitHub CLI\gh.exe" release create v1.X.0 \
+         --title "Mini Dictaphone V1.X.0" --notes "..."
+
+CONFIG.GIT :
+  - user.name = ponpon76 (pseudonyme, pas le nom réel — protection vie privée)
+  - remote origin = https://github.com/ponpon76/mini-dictaphone.git
+  - .gitignore exclut : node_modules, Whisper/, Correcteur/, Sauvegardes/,
+    config.json, dictionnaire_perso.txt, langue.txt, *.zip
+    (tout ce qui est local/perso/massif n'est pas versionné)
 
 
 ##############################################################################
@@ -266,6 +349,8 @@ MÉTHODE DE COPIE VERS L'INSTALLATION :
 
 6. MAJ & MODÈLES
    [x] Vérif MAJ app (GitHub) + Whisper (Const-me)
+   [x] Bouton global "🔍 Tout vérifier" (Session 6) : lance app + Whisper en
+       parallèle, résultats consolidés. Remplace les 2 boutons séparés.
    [x] Gestionnaire modèles (tiny/base/small/medium/large-v3)
    [x] Bouton "Installer auto" main.exe (télécharge + dézippe cli.zip)
    [x] Redémarrage auto après modèle + après main.exe
@@ -305,17 +390,19 @@ MÉTHODE DE COPIE VERS L'INSTALLATION :
 ⚠️ ORDRE DES PHASES : 0 → 1 → 2 → 3 → 4 → 5 → 6
    La Phase 5 (Jarvis) est BLOQUÉE tant que Jarvis n'est pas lancé/stable.
 
-⚠️ ÉTAT AU 2026-07-02 (Session 5) — PROJET TERMINÉ POUR CETTE ITÉRATION :
+⚠️ ÉTAT AU 2026-07-02 (Session 6) — VERSION 1.1.0 PUBLIÉE :
    Phases 0, 1, 2, 3 = CODÉES + TESTÉES (sauf install correcteur à re-valider
    après fix URL, et webhook n8n codé mais en attente de validation réelle
    — nécessite n8n+LLM installés).
    Zip de distribution créé : mini-dictaphone-v1.zip (~91 Ko, sauvegardé par
    l'utilisateur dans D:\program\IA). Prêt pour tests par amis.
-   Session 5 (2026-07-02) : correction bug "messages perdus" (race condition
-   AudioWorklet → ~2 dictées sur 10 silencieusement ratées) + COPIER copie
-   tout le contenu cumulé au lieu du dernier bloc seul.
-   VOIR JOURNAL.txt Sessions 3 à 5 pour le bilan complet et les prochaines
-   étapes.
+   Release v1.1.0 créée sur GitHub (tag + notes). La détection de MAJ est
+   active : l'app voit "À jour (v1.1.0)" via le bouton "🔍 Tout vérifier".
+   Sessions clés :
+     - Session 5 : bug transcription (race condition) + COPIER cumul
+     - Session 6 : bouton MAJ global "Tout vérifier" + sync installée +
+       découverte du PIÈGE source→installé (voir section dédiée ci-dessus).
+   VOIR JOURNAL.txt (Sessions 5-6 en haut) pour le détail.
 
 A. PHASE 0 — MARQUEURS DE SECTION DANS LE CODE (PRÉALABLE)
    [ ] Découper index.html en blocs avec commentaires de section explicites
@@ -448,12 +535,14 @@ Roadmap Jarvis existante dans :
 - En cas de refus (Denied) → stop immédiat, on parle.
 - L'utilisateur teste en conditions réelles, ses retours sont précis.
 - Économiser les tokens : planifier d'abord, coder en blocs solides.
+- ⚠️ APRÈS CHAQUE MODIF DE CODE : synchroniser source → installé (C:\)
+  sinon ponpon 76 teste sur une version obsolète (voir LE PIÈGE #1).
 - Le dictaphone est fonctionnel EN L'ÉTAT — correcteur, traduction et webhook
-  sont CODÉS ( Jarvis reste la seule évolution bloquée en attente du projet).
+  sont CODÉS (Jarvis reste la seule évolution bloquée en attente du projet).
   Le webhook est codé mais sa validation réelle attend l'install de n8n.
 
 AUTEUR : ponpon 76 — Code : Coder (GLM-5.2, ZCode)
-Date de ce book : 2026-07-02 (mis à jour Session 5)
+Date de ce book : 2026-07-02 (mis à jour Session 6, version 1.1.0)
 
 ===============================================================================
                     FIN DU BOOK — COPIER-COLER EN ENTIER
