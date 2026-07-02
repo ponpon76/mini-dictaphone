@@ -1116,10 +1116,14 @@
             <button class="modal-btn secondary" onclick="testerWebhook()" style="flex:1;">🔌 ${T.webhook_tester}</button>
           </div>
         </div>
-        <div class="modal-row"><div><b>${T.application}</b><div class="meta">${T.version} ${appConfig ? appConfig.appVersion : '?'}</div></div><button class="modal-btn" onclick="checkAppUpdate()">${T.verifier_maj}</button></div>
-        <div id="app-update-info"></div>
-        <div class="modal-row"><div><b>${T.executable_whisper}</b><div class="meta">${hasExe ? 'main.exe ✔ ' + T.installe : '⚠️ main.exe ' + T.modele_manquant.replace('Modèle','').trim()}</div><div class="meta" style="opacity:0.6">${T.whisper_exe_instruc}</div><div class="progress-bar" id="prog-cli" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div>${hasExe ? `<button class="modal-btn" onclick="checkWhisperExeUpdate()">${T.verifier_maj}</button>` : `<button class="modal-btn" onclick="installCliAuto()">${T.installer_auto}</button>`}</div>
-        <div id="whisper-update-info"></div>
+        <div class="modal-row" style="flex-direction:column; align-items:stretch;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div><b>${T.maj_global_titre}</b><div class="meta">${T.maj_app}: v${appConfig ? appConfig.appVersion : '?'} · ${T.executable_whisper}: ${hasExe ? 'main.exe ✔' : '⚠️ ' + T.modele_manquant.toLowerCase()}</div></div>
+            <button class="modal-btn" onclick="checkAllUpdates()">🔍 ${T.tout_verifier}</button>
+          </div>
+          <div id="all-update-info" style="margin-top:6px;"></div>
+          ${!hasExe ? `<div class="modal-row" style="margin-top:6px;"><div><b>${T.executable_whisper}</b><div class="meta" style="opacity:0.6">${T.whisper_exe_instruc}</div><div class="progress-bar" id="prog-cli" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div><button class="modal-btn" onclick="installCliAuto()">${T.installer_auto}</button></div>` : `<div class="progress-bar" id="prog-cli" style="display:none"><div class="progress-fill" style="width:0%"></div></div>`}
+        </div>
         <div class="modal-row"><div><b>${T.bouton_redemarrer}</b><div class="meta" style="opacity:0.6">${T.redemarrer_apres}</div></div><button class="modal-btn" style="background:#f38ba8;color:#1e1e2e;" onclick="redemarrerApp()">${T.bouton_redemarrer}</button></div>
         <div style="margin: 15px 0 8px; font-size: 12px; opacity: 0.8;">${T.tableau_modeles}</div>
         <table class="models-table">
@@ -1195,37 +1199,67 @@
       }).join('');
     }
 
-    function checkAppUpdate() {
-      const info = document.getElementById('app-update-info');
-      info.innerHTML = `<div class="modal-row"><div class="meta">${T.verification}</div></div>`;
+    // ==========================================
+    // MISES À JOUR — vérification globale (app + Whisper en une fois)
+    // ==========================================
+    // Stocke les 2 résultats (app + whisper-exe) au fur et à mesure, puis
+    // rend l'affichage consolidé dans #all-update-info. On garde le lancement
+    // automatique au démarrage (checkAppUpdate, silencieux) pour le point
+    // rouge de notification, mais l'utilisateur a UN seul bouton pour tout.
+    let updateResults = { app: null, whisper: null };
+    let updateCheckActive = false; // true uniquement pendant une vérif lancée par clic
+
+    // Vérifie TOUT en parallèle (appelée par le bouton "🔍 Tout vérifier")
+    function checkAllUpdates() {
+      updateCheckActive = true;
+      updateResults = { app: '<i>' + T.verification + '</i>', whisper: '<i>' + T.verification + '</i>' };
+      renderAllUpdates();
       ipcRenderer.send('check-app-update');
-    }
-    function checkWhisperExeUpdate() {
-      const info = document.getElementById('whisper-update-info');
-      info.innerHTML = `<div class="modal-row"><div class="meta">${T.verification}</div></div>`;
       ipcRenderer.send('check-whisper-update');
+    }
+
+    // Lancée au démarrage (silencieux) pour le point rouge de notification
+    function checkAppUpdate() { ipcRenderer.send('check-app-update'); }
+
+    // Construit le rendu HTML consolidé des 2 résultats dans #all-update-info
+    function renderAllUpdates() {
+      const info = document.getElementById('all-update-info');
+      if (!info) return; // modale fermée
+      const rows = [];
+      if (updateResults.app !== null) {
+        rows.push(`<div class="modal-row"><div><b>${T.maj_app}</b><div class="meta">${updateResults.app}</div></div></div>`);
+      }
+      if (updateResults.whisper !== null) {
+        rows.push(`<div class="modal-row"><div><b>${T.executable_whisper}</b><div class="meta">${updateResults.whisper}</div></div></div>`);
+      }
+      info.innerHTML = rows.join('');
     }
 
     ipcRenderer.on('update-result', (_e, r) => {
       if (r.type === 'app') {
-        const info = document.getElementById('app-update-info');
         const dot = document.getElementById('update-dot');
         if (r.error) {
-          if (info) info.innerHTML = `<div class="modal-row"><div class="meta" style="color:#f38ba8">Erreur : ${r.error}</div></div>`;
-          return;
-        }
-        if (r.hasUpdate) {
+          if (updateCheckActive) { updateResults.app = `<span style="color:#f38ba8">${r.error}</span>`; renderAllUpdates(); }
+        } else if (r.hasUpdate) {
+          // Une MAJ existe : on l'affiche toujours (même en silencieux) + point rouge
           if (dot) dot.classList.add('show');
-          if (info) info.innerHTML = `<div class="modal-row"><div><b>MAJ dispo : v${r.latest}</b> (vous avez v${r.current})<div class="meta">Voir les notes sur GitHub</div></div><button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">Ouvrir</button></div>`;
-        } else if (!r.silent) {
-          if (info) info.innerHTML = `<div class="modal-row"><div class="meta">À jour (v${r.current})</div></div>`;
-        } else {
-          if (info) info.innerHTML = '';
+          updateResults.app = `<span style="color:#f9e2af">⚠️ ${T.maj_dispo}: v${r.latest} (vous: v${r.current})</span> <button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">${T.ouvrir}</button>`;
+          renderAllUpdates();
+        } else if (updateCheckActive) {
+          // "À jour" : ne s'affiche QUE si l'utilisateur a cliqué (pas au démarrage silencieux)
+          updateResults.app = `<span style="color:#a6e3a1">✓ ${T.maj_a_jour} (v${r.current})</span>`;
+          renderAllUpdates();
         }
       } else if (r.type === 'whisper-exe') {
-        const info = document.getElementById('whisper-update-info');
-        if (r.error) { if (info) info.innerHTML = `<div class="modal-row"><div class="meta" style="color:#f38ba8">Erreur : ${r.error}</div></div>`; return; }
-        if (info) info.innerHTML = `<div class="modal-row"><div><b>Dernière version : ${r.latest}</b><div class="meta">Téléchargez le nouveau cli.zip et remplacez main.exe</div></div><button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">Ouvrir</button></div>`;
+        if (!updateCheckActive) return; // n'afficher qu'après un clic (pas de silencieux pour whisper)
+        if (r.error) {
+          updateResults.whisper = `<span style="color:#f38ba8">${r.error}</span>`;
+        } else {
+          // On ne sait pas détecter la version installée de main.exe, donc on
+          // affiche juste la dernière dispo (lien si MAJ souhaitée).
+          updateResults.whisper = `${T.derniere_version}: ${r.latest} <button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">${T.ouvrir}</button>`;
+        }
+        renderAllUpdates();
       }
     });
 

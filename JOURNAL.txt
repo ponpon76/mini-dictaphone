@@ -18,6 +18,60 @@ en HAUT de ce fichier (juste sous ce bandeau), avant la fin de la conv.
 
 
 ═══════════════════════════════════════════════════════════════════════════════
+SESSION 6 — 2026-07-02 (v1.1.0 : bouton MAJ global + synchronisation)
+═══════════════════════════════════════════════════════════════════════════════
+
+• RÉSUMÉ (1 ligne)
+  Version 1.1.0. Remplace les 2 boutons "Vérifier MAJ" séparés (app + Whisper)
+  par UN seul bouton "🔍 Tout vérifier" qui lance les 2 vérifs en parallèle.
+  Surtout : découverte que l'installation C:\MiniDictaphone était OBSOLÈTE
+  (jamais synchronisée depuis les Sessions 3-5) — d'où les bugs COPIER et
+  transcription qui semblaient "non corrigés". Synchronisation effectuée.
+
+• MODIFS (fichiers créés/modifiés cette session)
+  - index.html (renderModal) : 2 lignes Application/Whisper avec boutons
+    individuels → 1 seule ligne avec bouton "🔍 Tout vérifier" + zone
+    consolidée #all-update-info. État installé (version + main.exe) affiché
+    en résumé.
+  - index.html (checkAllUpdates + renderAllUpdates) : nouvelle fonction qui
+    lance les 2 IPC en parallèle et accumule les résultats. Handler
+    update-result redirigé vers la zone unique. Gestion du mode silencieux
+    (updateCheckActive flag) pour ne pas afficher "À jour" au démarrage.
+  - langues.js : +7 clés × 6 langues (tout_verifier, maj_global_titre,
+    maj_app, maj_a_jour, maj_dispo, derniere_version, ouvrir).
+  - main.js + package.json + config.json : appVersion 1.0.0 → 1.1.0.
+  - C:\MiniDictaphone\ : synchronisation complète depuis la source
+    (index.html, main.js, langues.js, package.json, MANUEL.txt, BOOK.txt,
+    JOURNAL.txt + copie DESINSTALLER.bat, ROADMAP.txt, DESCRIPTION).
+  - C:\MiniDictaphone\config.json : FUSION (pas écrasement) — updateRepo
+    VOTRE_NOM_GITHUB → ponpon76/mini-dictaphone + appVersion → 1.1.0.
+    Réglages perso (correctionMode, modeTraduction, géométrie) préservés.
+  - JOURNAL.txt : cette entrée Session 6.
+
+• DÉCISIONS (choix pris + pourquoi)
+  - BOUTON UNIQUE plutôt que 2 séparés : ponpon 76 trouvait les 2 boutons
+    "Vérifier MAJ" confus (il pensait que ça ne vérifiait que le CLI). Un
+    seul bouton global = plus simple et couvre tout.
+  - VERSION 1.1.0 (pas 1.0.1) : demande explicite de ponpon 76. Marque bien
+    qu'il y a eu une évolution fonctionnelle (bouton MAJ global + fixes).
+  - SYNC installée : cause racine des bugs récurrents. Le BOOK documentait
+    déjà l'obligation de copier source→installé, mais ça n'avait pas été
+    fait depuis la Session 3. Maintenant fait.
+  - config.json installé : FUSION ciblée, pas écrasement (préserve les
+    réglages utilisateur). Le config.json source reste en placeholder
+    VOTRE_NOM_GITHUB (intentionnel pour les autres utilisateurs).
+
+• RESTE À TESTER / BUGS
+  - ⏳ Valider en réel après relance : COPIER (3 blocs), transcription (10+
+    dictées 0 raté), bouton "Tout vérifier" (doit afficher app À jour v1.1.0
+    + Whisper version), badge correcteur "✓ Prêt".
+  - ⏳ Release v1.1.0 sur GitHub (tag) — active la détection MAJ côté app.
+
+• PROCHAINE ÉTAPE
+  - Relancer app depuis C:\ (raccourci Bureau) + tester les points ci-dessus.
+  - Si OK : commit + push + gh release create v1.1.0.
+
+═══════════════════════════════════════════════════════════════════════════════
 SESSION 5 — 2026-07-02 (bug fiabilité transcription + COPIER cumul)
 ═══════════════════════════════════════════════════════════════════════════════
 

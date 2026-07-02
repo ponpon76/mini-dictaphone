@@ -13,7 +13,7 @@ const http = require('http');
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LANGUE_PATH = path.join(__dirname, 'langue.txt');
 const DEFAULT_CONFIG = {
-  appVersion: '1.0.0',
+  appVersion: '1.1.0',
   updateRepo: 'VOTRE_NOM_GITHUB/mini-dictaphone',
   checkUpdatesOnLaunch: true,
   language: 'fr',
