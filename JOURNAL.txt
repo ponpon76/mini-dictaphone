@@ -18,6 +18,59 @@ en HAUT de ce fichier (juste sous ce bandeau), avant la fin de la conv.
 
 
 ═══════════════════════════════════════════════════════════════════════════════
+SESSION 5 — 2026-07-02 (bug fiabilité transcription + COPIER cumul)
+═══════════════════════════════════════════════════════════════════════════════
+
+• RÉSUMÉ (1 ligne)
+  Correction du bug des "2 dictées ratées sur 10" (race condition AudioWorklet
+  lors de l'arrêt du micro) + changement du bouton COPIER qui copie désormais
+  TOUT le contenu cumulé de la fenêtre au lieu du dernier bloc seul.
+
+• MODIFS (fichiers créés/modifiés cette session)
+  - index.html (arreterCapture) : BUG PRINCIPAL. Avant on attendait 200 ms
+    fixes (setTimeout) avant de fermer l'AudioContext. Or le worklet renvoie
+    ses échantillons de façon ASYNCHRONE via port.onmessage. Si le message
+    n'était pas arrivé à T+200ms (CPU chargé, GC), recordedSamples restait
+    vide → "aucun son" → dictée perdue silencieusement (~20% des cas).
+    CORRECTION : on attend maintenant que le worklet ait VRAIMENT renvoyé
+    son 'result' (avec un timeout de garde de 3 s si crash).
+  - index.html (copyText) : COPIER copie maintenant TOUT output.value
+    (tous les blocs cumulés). Priorités conservées : 1) sélection manuelle,
+    2) note historique affichée, 3) tout le contenu. Code mort supprimé
+    (variable derniereTranscriptionPos + bug ligne dupliquée dans clearNote).
+  - BOOK.txt    : ligne COPIER (dernier bloc → tout cumul) + Phases 1/2/3
+                  passées en "codé + testé" (correcteur/traduction/webhook).
+  - ROADMAP.txt : A (correcteur) + A2 (traduction) passés à [x], ajout
+                  section A3 (webhook, absente), conclusion corrigée.
+  - DESCRIPTION_OPEN_SOURCE.txt : ajout correcteur/traduction/webhook
+                                  dans les listes FR + EN.
+  - JOURNAL.txt : cette entrée Session 5.
+
+• DÉCISIONS (choix pris + pourquoi)
+  - COPIER = TOUT le contenu (demande explicite de ponpon 76). Le bouton
+    CLEAR sert désormais à remettre à zéro entre deux conversations, ce qui
+    est plus simple que tout sélectionner puis recopier. Cohérent avec le
+    MANUEL qui disait déjà "Copie tout le texte" (le code n'avait jamais
+    suivi l'intention documentée — c'est maintenant aligné).
+  - Bug transcription : diagnostic = race condition asynchrone classique des
+    AudioWorklets. Fix par attente d'événement au lieu de délai arbitraire.
+    Pas de VAD/silence-detection ajouté (overkill pour ce cas).
+  - Le webhook reste marqué "codé, test en attente" — je n'invente pas un
+    succès de test que personne n'a fait (honnêteté, règle BOOK).
+
+• RESTE À TESTER / BUGS
+  - ✅ Bug transcription (messages perdus) — fix écrit. À valider en session
+    longue réelle (dicter 10-20 messages d'affilée, vérifier 0 raté).
+  - Phase 1 correcteur : install réelle à re-valider après fix URL.
+  - Phase 3 webhook : validation réelle (nécessite n8n + webhook cible).
+  - Release v1.0.0 (tag) toujours à créer (Session 4) pour MAJ auto.
+
+• PROCHAINE ÉTAPE
+  - Relancer l'app + tester le fix en session longue (10+ dictées).
+  - Si OK : commit + push sur GitHub (ponpon76/mini-dictaphone).
+  - PUIS : Release v1.0.0 + faire tester par des amis.
+
+═══════════════════════════════════════════════════════════════════════════════
 SESSION 4 — 2026-07-02 (publication GitHub + pseudonyme)
 ═══════════════════════════════════════════════════════════════════════════════
 

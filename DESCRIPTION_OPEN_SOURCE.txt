@@ -19,8 +19,11 @@ italien). Raccourci épinglable à la barre des tâches Windows 11.
 Fonctionnalités principales :
   • Dictée vocale hors-ligne (Whisper, GPU)
   • Fenêtre flottante Always-On-Top
-  • Sauvegarde automatique par jour
+  • Sauvegarde automatique par jour + sauvegarde audio
   • Gestionnaire de modèles (1 clic)
+  • Correcteur d'orthographe 100 % local (LanguageTool, 3 modes + dico perso)
+  • Traduction vers l'anglais (option native Whisper)
+  • Sortie webhook n8n générique (envoi auto vers n8n/LLM/Discord/Notion…)
   • Filtrage automatique des bruits parasites
   • Insertion de fichiers (texte, Excel, Word, PDF)
   • 100 % privé, aucune télémétrie
@@ -44,8 +47,11 @@ pinnable to Windows 11 taskbar.
 Main features:
   • Offline voice dictation (Whisper, GPU)
   • Always-On-Top floating window
-  • Automatic save by day
+  • Automatic save by day + audio save
   • Model manager (1 click)
+  • 100% local spellchecker (LanguageTool, 3 modes + personal dictionary)
+  • English translation (native Whisper option)
+  • Generic n8n webhook output (auto-send to n8n/LLM/Discord/Notion…)
   • Automatic background noise filtering
   • File insertion (text, Excel, Word, PDF)
   • 100% private, no telemetry

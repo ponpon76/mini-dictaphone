@@ -55,7 +55,8 @@ reste à faire, et les décisions prises.
   [x] Tableau comparatif des modèles (FR/EN/ES/IT/PT/DE + VRAM)
   [x] Info-bulle VRAM (au survol)
   [x] Recommandation "small" comme bon équilibre
-  [x] Bouton COPIER : copie le dernier bloc dicté (corrigé si édité)
+  [x] Bouton COPIER : copie TOUT le contenu cumulé de la fenêtre
+      (Session 5 : avant ne copiait que le dernier bloc dicté)
 
 6. PHASE 6 — MISES À JOUR & MODÈLES
 -------------------------------------------------------------------------------
@@ -117,15 +118,24 @@ reste à faire, et les décisions prises.
 #                    CE QUI RESTE À FAIRE (À VENIR)                         #
 ##############################################################################
 
-A. CORRECTEUR D'ORTHOGRAPHE (PRIORITÉ HAUTE)
+A. CORRECTEUR D'ORTHOGRAPHE (PRIORITÉ HAUTE) ✅ CODÉ + TESTÉ (Session 3)
 -------------------------------------------------------------------------------
-  [ ] Intégrer LanguageTool en LOCAL (serveur sur le PC)
-  [ ] Téléchargement automatique de Java portable (Temurin, licence libre)
-  [ ] Téléchargement automatique de LanguageTool (~150 Mo)
-  [ ] Lancement du serveur en arrière-plan (localhost:8081)
-  [ ] Bouton "Installer le correcteur" dans le panneau ⚙️
-  [ ] Correction automatique après chaque transcription
-  [ ] Décision à prendre : fallback si LanguageTool est off ?
+  [x] Intégrer LanguageTool en LOCAL (serveur sur le PC)
+  [x] Téléchargement automatique de Java portable (Temurin, licence libre)
+  [x] Téléchargement automatique de LanguageTool (~150 Mo)
+  [x] Lancement du serveur en arrière-plan (localhost:8081)
+  [x] Bouton "Installer le correcteur" dans le panneau ⚙️ (barre de progression)
+  [x] Correction automatique après chaque transcription
+  [x] Décision prise : si LanguageTool off → texte brut silencieux (off implicite)
+
+  3 MODES (sélecteur dans ⚙️) :
+  [x] OFF       : pas de correction
+  [x] AUTO      : corrige en silence après chaque dictée (corrections certaines)
+  [x] SEMI-AUTO : panneau de relecture si fautes (Appliquer / Ignorer / ➕ Dico)
+  [x] Dictionnaire personnel (dictionnaire_perso.txt) — mots ignorés par LT
+
+  ⚠️ RESTE : re-valider l'installation réelle après le fix d'URL (le code du
+     fix est écrit, pas encore re-testé en conditions réelles).
 
   NOTE : Le dictionnaire Windows/Hunspell a été écarté (trop mauvais en
   français pour les accords). LanguageTool local est le choix retenu.
@@ -133,20 +143,36 @@ A. CORRECTEUR D'ORTHOGRAPHE (PRIORITÉ HAUTE)
   marche que si Jarvis tourne.
 
 
-A2. TRADUCTION VERS L'ANGLAIS (PRIORITÉ MOYENNE)
+A2. TRADUCTION VERS L'ANGLAIS ✅ CODÉ + TESTÉ (Session 3)
 -------------------------------------------------------------------------------
-  [ ] Bouton "🌐 Traduire" pour convertir la dictée en anglais
-  [ ] Utilise l'option native --translate de Whisper (zéro dépendance)
-  [ ] Le texte transcrit est affiché en anglais au lieu de la langue source
-  [ ] Idéal pour : remplir des formulaires/prompt sur des sites anglais
+  [x] Bouton "🌐 Traduire" pour convertir la dictée en anglais (bascule on/off)
+  [x] Utilise l'option native -tr (--translate) de Whisper (zéro dépendance)
+  [x] Le texte transcrit est affiché en anglais au lieu de la langue source
+  [x] Idéal pour : remplir des formulaires/prompt sur des sites anglais
       (modèles IA, services), ou pour des utilisateurs ne parlant pas
       anglais mais voulant communiquer dans cette langue
-  [ ] Bascule : on dicte en français → texte final en anglais
+  [x] Bascule : on dicte en français → texte final en anglais
 
   NOTE : Whisper ne sait traduire QUE vers l'anglais (pas vers d'autres
   langues). Pour une traduction multilingue (FR↔ES, etc.), il faudrait une
   librairie locale supplémentaire (Argos Translate, ~500 Mo) — écarté pour
   l'instant, à revoir si besoin.
+
+A3. WEBHOOK N8N GÉNÉRIQUE (UNIVERSEL) ✅ CODÉ (test en attente — Session 3)
+-------------------------------------------------------------------------------
+  [x] Bouton "📤 Envoyer" (armement style 💾 AUDIO : auto-envoi après chaque dictée)
+  [x] Config dans ⚙️ : URL webhook + jeton (token) optionnel
+  [x] Envoi POST JSON standardisé : { texte, langue, date, source }
+  [x] Bouton "Tester" la connexion dans ⚙️
+  [x] Indicateur succès/échec (retour visuel discret)
+  [x] Config mémorisée dans config.json
+  ⚠️ RESTE : validation RÉELLE bout-en-bout (nécessite un n8n + un webhook
+     cible installés). Le code est en place, pas un bug de code.
+
+  POURQUOI : le dictaphone vise monsieur tout-le-monde, pas seulement Jarvis.
+  Une sortie webhook générique sert à Jarvis (ponpon 76) mais aussi à tout
+  utilisateur avec son propre n8n (Discord, Notion, un LLM, etc.).
+
 
 B. PHASE 4 — INTÉGRATION JARVIS
 -------------------------------------------------------------------------------
@@ -203,9 +229,15 @@ Le Mini Dictaphone V1 est FONCTIONNEL pour son usage principal :
 dictée vocale 100% locale en français (et 5 autres langues), avec
 sauvegarde, historique, audio, insertion de fichiers.
 
-Les fonctionnalités manquantes (correcteur, Jarvis) sont des évolutions
-qui n'empêchent pas l'usage quotidien.
+Le correcteur d'orthographe, la traduction EN et le webhook n8n sont CODÉS
+et testés (le webhook attend une validation réelle avec n8n installé).
+La seule évolution véritablement en attente est l'intégration Jarvis
+(bloquée tant que le projet Jarvis n'est pas lancé/stable).
+
+Session 5 (2026-07-02) : correction bug "messages perdus" (race condition
+AudioWorklet — ~2 dictées sur 10 ratées silencieusement) + COPIER copie
+tout le contenu cumulé au lieu du dernier bloc seul.
 
 ===============================================================================
-                          Fin de la roadmap - 2026-07-02
+                          Fin de la roadmap - 2026-07-02 (Session 5)
 ===============================================================================

@@ -300,7 +300,6 @@
     const tempDir = path.join(__dirname, 'temp');
     let noteCourante = null;
     let historyIndex = -1; // -1 = note nouvelle/en cours ; >=0 = navigation dans l'historique
-    let derniereTranscriptionPos = 0; // position de départ du dernier bloc dicté (pour COPIER)
     let modeAudioArme = false; // mode "Sauvegarde et Audio" armé ou non
     let modeTraduction = false; // mode "Traduire vers l'anglais" (flag -tr de Whisper)
     let modeWebhook = false;    // mode "Envoi webhook n8n" armé (auto-envoi après chaque dictée)
@@ -387,8 +386,6 @@
       }
       noteCourante = null;
       historyIndex = -1;
-      derniereTranscriptionPos = 0;
-      derniereTranscriptionPos = 0;
       document.getElementById('text-output').value = '';
       updateNavInfo();
       flash(T.ecran_efface);
@@ -579,8 +576,27 @@
           audioCtx = null; mediaStream = null; sourceNode = null; recorderNode = null; analyser = null;
           resolve();
         };
-        if (recorderNode) { recorderNode.port.postMessage('stop'); setTimeout(finish, 200); }
-        else finish();
+        if (!recorderNode) { finish(); return; }
+        // CORRECTION BUG "messages perdus" :
+        // Avant on attendait 200 ms fixes puis on fermait l'AudioContext.
+        // Or le worklet renvoie ses échantillons de façon ASYNCHRONE via
+        // port.onmessage -> 'result'. Si le message n'était pas encore arrivé
+        // à T+200ms (CPU chargé, GC, etc.), recordedSamples restait null/vide
+        // et la transcription échouait silencieusement ("aucun son").
+        // -> On attend maintenant que le worklet ait VRAIMENT renvoyé son
+        // résultat (avec un timeout de garde de 3 s au cas où il planterait).
+        let settled = false;
+        const done = () => { if (settled) return; settled = true; finish(); };
+        const guard = setTimeout(done, 3000);
+        recorderNode.port.onmessage = (e) => {
+          if (e.data && e.data.type === 'result') {
+            recordedSamples = e.data.data;
+            clearTimeout(guard);
+            done();
+          }
+        };
+        try { recorderNode.port.postMessage('stop'); }
+        catch (e) { clearTimeout(guard); done(); }
       });
     }
 
@@ -810,8 +826,6 @@
         try { fs.unlinkSync(wavPath); } catch (e) {}
         try { fs.unlinkSync(wavPath.replace(/\.wav$/i, '.txt')); } catch (e) {}
         if (texte) {
-          // Mémorise la position de départ de ce bloc (pour le COPIER "dernier seulement")
-          derniereTranscriptionPos = output.value.length;
           // CORRECTION (Phase 1.2/1.3) : si un mode est actif ET le serveur est up
           let texteFinal = texte;
           let matchesRestants = [];
@@ -1000,9 +1014,9 @@
       } else if (historyIndex >= 0) {
         // Priorité 2 : si on navigue dans l'historique, on copie la note entière affichée
         text = output.value;
-      } else if (derniereTranscriptionPos > 0 || output.value.length > 0) {
-        // Priorité 3 : on copie seulement le dernier bloc dicté (depuis derniereTranscriptionPos)
-        text = output.value.substring(derniereTranscriptionPos).trim();
+      } else if (output.value.length > 0) {
+        // Priorité 3 : on copie TOUT le contenu cumulé de la fenêtre (tous les blocs dictés)
+        text = output.value.trim();
       }
       if (text) {
         clipboard.writeText(text);

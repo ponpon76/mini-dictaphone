@@ -258,7 +258,11 @@ MÉTHODE DE COPIE VERS L'INSTALLATION :
    [x] Détection GPU (PowerShell, corrige wmic Win11)
    [x] Mémorisation position/taille fenêtre
    [x] Tableau comparatif modèles (FR/EN/ES/IT/PT/DE + VRAM + info-bulle)
-   [x] COPIER copie le dernier bloc dicté (corrigé si édité)
+   [x] COPIER copie TOUT le contenu cumulé de la fenêtre (tous les blocs
+       dictés). Priorités : 1) si sélection manuelle → copie la sélection ;
+       2) si navigation historique → copie la note affichée ; 3) sinon → tout
+       le contenu. Le bouton CLEAR remet à zéro pour la conversation suivante.
+       (Corrigé Session 5 : avant ne copiait que le dernier bloc.)
 
 6. MAJ & MODÈLES
    [x] Vérif MAJ app (GitHub) + Whisper (Const-me)
@@ -301,12 +305,17 @@ MÉTHODE DE COPIE VERS L'INSTALLATION :
 ⚠️ ORDRE DES PHASES : 0 → 1 → 2 → 3 → 4 → 5 → 6
    La Phase 5 (Jarvis) est BLOQUÉE tant que Jarvis n'est pas lancé/stable.
 
-⚠️ ÉTAT AU 2026-07-02 (Session 3) — PROJET TERMINÉ POUR CETTE ITÉRATION :
+⚠️ ÉTAT AU 2026-07-02 (Session 5) — PROJET TERMINÉ POUR CETTE ITÉRATION :
    Phases 0, 1, 2, 3 = CODÉES + TESTÉES (sauf install correcteur à re-valider
-   après fix URL, et webhook n8n bloqué par install n8n+LLM).
+   après fix URL, et webhook n8n codé mais en attente de validation réelle
+   — nécessite n8n+LLM installés).
    Zip de distribution créé : mini-dictaphone-v1.zip (~91 Ko, sauvegardé par
    l'utilisateur dans D:\program\IA). Prêt pour tests par amis.
-   VOIR JOURNAL.txt Session 3 pour le bilan complet et les prochaines étapes.
+   Session 5 (2026-07-02) : correction bug "messages perdus" (race condition
+   AudioWorklet → ~2 dictées sur 10 silencieusement ratées) + COPIER copie
+   tout le contenu cumulé au lieu du dernier bloc seul.
+   VOIR JOURNAL.txt Sessions 3 à 5 pour le bilan complet et les prochaines
+   étapes.
 
 A. PHASE 0 — MARQUEURS DE SECTION DANS LE CODE (PRÉALABLE)
    [ ] Découper index.html en blocs avec commentaires de section explicites
@@ -315,28 +324,30 @@ A. PHASE 0 — MARQUEURS DE SECTION DANS LE CODE (PRÉALABLE)
    But : pouvoir relire juste la section concernée, pas tout le fichier
    (application du LEVIER 4 — parcimonie de lecture).
 
-B. PHASE 1 — CORRECTEUR D'ORTHOGRAPHE (PRIORITÉ HAUTE)
-   [ ] Téléchargement auto Java portable (Temurin, licence libre GPL)
-   [ ] Téléchargement auto LanguageTool (~150 Mo)
-   [ ] Lancement serveur arrière-plan → localhost:8081
-   [ ] Bouton "Installer le correcteur" dans ⚙️ (avec barre de progression)
+B. PHASE 1 — CORRECTEUR D'ORTHOGRAPHE (PRIORITÉ HAUTE) ✅ CODÉ + TESTÉ
+   [x] Téléchargement auto Java portable (Temurin, licence libre GPL)
+   [x] Téléchargement auto LanguageTool (~150 Mo)
+   [x] Lancement serveur arrière-plan → localhost:8081
+   [x] Bouton "Installer le correcteur" dans ⚙️ (avec barre de progression)
+   ⚠️ RESTE : re-valider l'installation réelle après fix URL (Session 3 a
+      écrit le fix, pas encore re-testé en conditions réelles).
 
    COMPORTEMENT RETENU = DOUBLE MODE (choix utilisateur dans ⚙️) :
-   [ ] MODE AUTO      : après chaque dictée, LanguageTool corrige en silence,
+   [x] MODE AUTO      : après chaque dictée, LanguageTool corrige en silence,
                         le texte se remplace tout seul. Zéro clic.
-   [ ] MODE SEMI-AUTO : après chaque dictée, si fautes détectées → panneau de
+   [x] MODE SEMI-AUTO : après chaque dictée, si fautes détectées → panneau de
                         relecture. Validation/refus correction par correction.
-   [ ] (off implicite) : si LanguageTool absent ou serveur off → texte brut
+   [x] (off implicite) : si LanguageTool absent ou serveur off → texte brut
                         silencieux, quel que soit le mode.
 
    PANNEAU DE RELECTURE (mode semi-auto) :
-   [ ] Liste les fautes détectées, avec proposition de correction
-   [ ] Bouton "Appliquer" / "Ignorer" par faute
-   [ ] Bouton "➕ Ajouter au dictionnaire" (le mot n'est plus signalé)
+   [x] Liste les fautes détectées, avec proposition de correction
+   [x] Bouton "Appliquer" / "Ignorer" par faute
+   [x] Bouton "➕ Ajouter au dictionnaire" (le mot n'est plus signalé)
 
    DICTIONNAIRE PERSONNEL (apprentissage des mots) :
-   [ ] Gestion manuelle (ajout/retrait par lot) dans ⚙️
-   [ ] Stockage local 100% offline : dictionnaire_perso.txt (ou JSON)
+   [x] Gestion manuelle (ajout/retrait par lot) dans ⚙️
+   [x] Stockage local 100% offline : dictionnaire_perso.txt
 
    DÉCISIONS PRISES :
    - ZONE DE TEXTE = <textarea> CONSERVÉE (texte brut). Pas de migration vers
@@ -351,22 +362,26 @@ B. PHASE 1 — CORRECTEUR D'ORTHOGRAPHE (PRIORITÉ HAUTE)
      accords). LM Studio écarté (marche que si Jarvis tourne).
    - LanguageTool local = choix retenu. 100% offline, open source (LGPL).
 
-C. PHASE 2 — TRADUCTION VERS L'ANGLAIS (RAPIDE)
-   [ ] Bouton on/off 🌐 Traduire dans l'interface (bascule, pas un envoi unique)
-   [ ] Ajouter flag --translate à Whisper quand armé
-   [ ] État mémorisé dans config.json
-   [ ] Indication visuelle (bouton enfoncé = mode traduction actif)
+C. PHASE 2 — TRADUCTION VERS L'ANGLAIS (RAPIDE) ✅ CODÉ + TESTÉ
+   [x] Bouton on/off 🌐 Traduire dans l'interface (bascule, pas un envoi unique)
+   [x] Ajouter flag -tr (--translate) à Whisper quand armé
+   [x] État mémorisé (modeTraduction, bascule à chaque dictée)
+   [x] Indication visuelle (bouton enfoncé = mode traduction actif)
    Usage : dicte en français → texte final en anglais.
    Limite : Whisper ne traduit QUE vers l'anglais (technique, pas un bug).
    Pour multilingue (FR↔ES), il faudrait Argos Translate (~500 Mo) — écarté.
 
-D. PHASE 3 — SORTIE WEBHOOK N8N GÉNÉRIQUE (UNIVERSELLE)
-   [ ] Bouton on/off (style 💾 AUDIO : armé = auto-envoi après chaque dictée)
-   [ ] Config dans ⚙️ : URL webhook + jeton (token) optionnel
-   [ ] Envoi POST JSON standardisé : { texte, langue, date }
-   [ ] Bouton "Tester" la connexion dans ⚙️
-   [ ] Indicateur succès/échec (retour visuel discret)
-   [ ] Config mémorisée dans config.json
+D. PHASE 3 — SORTIE WEBHOOK N8N GÉNÉRIQUE (UNIVERSELLE) ✅ CODÉ (test en attente)
+   [x] Bouton on/off 📤 (style 💾 AUDIO : armé = auto-envoi après chaque dictée)
+   [x] Config dans ⚙️ : URL webhook + jeton (token) optionnel
+   [x] Envoi POST JSON standardisé : { texte, langue, date, source }
+   [x] Bouton "Tester" la connexion dans ⚙️
+   [x] Indicateur succès/échec (retour visuel discret)
+   [x] Config mémorisée dans config.json
+   ⚠️ RESTE : validation RÉELLE en conditions. Le code est en place
+      (webhook-send / webhook-test dans main.js) mais nécessite qu'un n8n
+      + LLM soient installés et qu'un webhook cible existe pour tester
+      bout-en-bout. Pas un bug de code — une question de environnement.
 
    POURQUOI C'EST IMPORTANT : le dictaphone est fait pour monsieur tout-le-
    monde, PAS uniquement pour Jarvis. Une sortie webhook générique sert à
@@ -433,11 +448,12 @@ Roadmap Jarvis existante dans :
 - En cas de refus (Denied) → stop immédiat, on parle.
 - L'utilisateur teste en conditions réelles, ses retours sont précis.
 - Économiser les tokens : planifier d'abord, coder en blocs solides.
-- Le dictaphone est fonctionnel EN L'ÉTAT — les fonctions manquantes
-  (correcteur, traduction, Jarvis) sont des évolutions, pas des bugs.
+- Le dictaphone est fonctionnel EN L'ÉTAT — correcteur, traduction et webhook
+  sont CODÉS ( Jarvis reste la seule évolution bloquée en attente du projet).
+  Le webhook est codé mais sa validation réelle attend l'install de n8n.
 
 AUTEUR : ponpon 76 — Code : Coder (GLM-5.2, ZCode)
-Date de ce book : 2026-07-02
+Date de ce book : 2026-07-02 (mis à jour Session 5)
 
 ===============================================================================
                     FIN DU BOOK — COPIER-COLER EN ENTIER
