@@ -129,6 +129,12 @@
     .progress-fill { height: 100%; background: #a6e3a1; transition: width 0.2s; }
     .badge-installed { background: rgba(166,227,161,0.2); color: #a6e3a1; padding: 2px 6px; border-radius: 3px; font-size: 9px; }
     .badge-active { background: #a6e3a1; color: #1e1e2e; padding: 2px 6px; border-radius: 3px; font-size: 9px; font-weight: bold; }
+    /* Badge "✓ Prêt" pour le correcteur (remplace l'ancien bouton "OK" grisé) */
+    .lt-badge-pret {
+      display: inline-block; background: rgba(166,227,161,0.2); color: #a6e3a1;
+      border: 1px solid rgba(166,227,161,0.5); padding: 5px 12px; border-radius: 4px;
+      font-size: 11px; font-weight: bold; white-space: nowrap;
+    }
 
     /* Tableau comparatif des modèles + info-bulle VRAM */
     .models-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
@@ -1279,17 +1285,32 @@
     // Met à jour l'affichage du statut du correcteur dans la modale ⚙️
     function renderLtStatus() {
       const meta = document.getElementById('lt-status-meta');
-      const btn = document.getElementById('lt-btn');
-      if (!meta || !btn) return; // modale fermée
+      if (!meta) return; // modale fermée
+      // Garantit un vrai <button id="lt-btn"> (le statut "prêt" peut l'avoir
+      // remplacé par un <span> badge au passage précédent).
+      let btn = document.getElementById('lt-btn');
+      if (btn && btn.tagName !== 'BUTTON') {
+        const realBtn = document.createElement('button');
+        realBtn.className = 'modal-btn'; realBtn.id = 'lt-btn';
+        realBtn.setAttribute('onclick', 'installCorrecteur()');
+        btn.replaceWith(realBtn); btn = realBtn;
+      }
+      if (!btn) return;
       if (!ltStatus.installed) {
         meta.innerHTML = '<span style="color:#f9e2af">' + T.correcteur_non_installe + '</span>';
-        btn.textContent = T.installer; btn.disabled = false;
+        btn.textContent = T.installer; btn.disabled = false; btn.style.display = '';
       } else if (ltStatus.serverUp) {
         meta.innerHTML = '<span style="color:#a6e3a1">' + T.correcteur_pret + ' (:' + ltStatus.port + ')</span>';
-        btn.textContent = 'OK'; btn.disabled = true;
+        // On remplace le bouton par un badge vert "✓ Prêt" non-cliquable,
+        // pour éviter qu'un bouton "OK" grisé ne fasse croire qu'une action
+        // reste à valider.
+        const badge = document.createElement('span');
+        badge.id = 'lt-btn'; badge.className = 'lt-badge-pret';
+        badge.textContent = '✓ ' + T.correcteur_pret;
+        btn.replaceWith(badge);
       } else {
         meta.innerHTML = '<span style="color:#f9e2af">' + T.correcteur_installe_off + '</span>';
-        btn.textContent = T.demarrer_serveur; btn.disabled = false;
+        btn.textContent = T.demarrer_serveur; btn.disabled = false; btn.style.display = '';
       }
     }
 
