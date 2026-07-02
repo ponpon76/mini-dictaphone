@@ -149,6 +149,7 @@ LEVIER 6 — RÉPONDRE COURT
 
 AUTEUR : ponpon 76 (le concept, les idées, le pilotage, les tests, les retours)
 CODE    : réalisé par Coder (GLM-5.2, ZCode)
+GITHUB  : ponpon76/mini-dictaphone (pseudo public — le nom réel n'apparaît nulle part)
 ESPRIT  : open source, perfectible, contributions bienvenues
 
 BUT : un dictaphone vocal flottant, Always-On-Top, 100% offline, pour
@@ -164,6 +165,8 @@ et remonte des bugs précis.
 EMPLACEMENTS :
   - Code source  : D:\program\prog\mini dictaphone\
   - Installé     : C:\MiniDictaphone\ (lancé via raccourci Bureau)
+  - GitHub       : https://github.com/ponpon76/mini-dictaphone (dépôt public open source)
+  - Sauvegarde zip : D:\program\IA\ (mini-dictaphone-v1.zip)
   - Jarvis       : C:\AI_Jarvis\Juju-Electron\ (projet suivant, à venir)
 
 FICHIERS CLÉS DU DICTAPHONE :
