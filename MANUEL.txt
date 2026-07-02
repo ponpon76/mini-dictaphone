@@ -309,7 +309,7 @@ de l'application est disponible.
   {
     "appVersion": "1.0.0",
     "updateRepo": "VOTRE_NOM_GITHUB/mini-dictaphone",  <-- votre dépôt GitHub
-                                                   (par défaut : lepontguillaume-hue/mini-dictaphone)
+                                                   (par défaut : ponpon76/mini-dictaphone)
     "checkUpdatesOnLaunch": true,   <-- vérif MAJ au démarrage
     "language": "fr",               <-- langue de transcription (Whisper)
     "window": { "width":450, "height":300, "x":null, "y":null }
