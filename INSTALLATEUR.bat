@@ -37,34 +37,8 @@ REM --- Telecharge la LTS portable de Node.js et l'installe sans UAC ---
 set "NODE_DIR=%LOCALAPPDATA%\NodeJS"
 set "NODE_ZIP=%TEMP%\node-portable.zip"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "^
-$ErrorActionPreference = 'Stop';^
-try {^
-    $idx = Invoke-RestMethod 'https://nodejs.org/dist/index.json';^
-    $lts = $idx ^| Where-Object { $_.lts -ne $false -and $_.security -ne $true } ^| Select-Object -First 1;^
-    if (-not $lts) { $lts = $idx ^| Where-Object { $_.lts -ne $false } ^| Select-Object -First 1 };^
-    $ver = $lts.version;^
-    Write-Host ('      Version LTS detectee : ' + $ver);^
-    $url = 'https://nodejs.org/dist/' + $ver + '/node-' + $ver + '-win-x64.zip';^
-    Write-Host '      Telechargement de Node.js (version portable)...';^
-    Invoke-WebRequest -Uri $url -OutFile '%NODE_ZIP%';^
-    Write-Host '      Decompression...';^
-    $dest = '%NODE_DIR%';^
-    if (Test-Path $dest) { Remove-Item $dest -Recurse -Force };^
-    Expand-Archive -LiteralPath '%NODE_ZIP%' -DestinationPath $dest -Force;^
-    # Le zip contient un sous-dossier node-vX-win-x64 ; on remonte son contenu
-    $sub = Get-ChildItem $dest -Directory ^| Select-Object -First 1;^
-    if ($sub) {^
-        Move-Item -Path (Join-Path $sub.FullName '*') -Destination $dest -Force;^
-        Remove-Item $sub.FullName -Force;^
-    };^
-    Remove-Item '%NODE_ZIP%' -Force;^
-    Write-Host '      Node.js installe avec succes.';^
-} catch {^
-    Write-Host ('      ERREUR : ' + $_.Exception.Message);^
-    exit 1;^
-}"
-
+REM --- Lance le script PowerShell dedie (dans PROGRAM/) ---
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0PROGRAM\install_node_portable.ps1" -NodeDir "%NODE_DIR%" -NodeZip "%NODE_ZIP%"
 if %errorlevel% neq 0 (
     echo.
     echo ==========================================
