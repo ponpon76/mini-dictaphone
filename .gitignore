@@ -23,6 +23,7 @@ temp/
 **/temp/
 dictionnaire_perso.txt
 langue.txt
+last_update_check.txt
 
 # === Config locale ===
 config.json
