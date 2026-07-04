@@ -129,10 +129,12 @@ async function checkAndAutoUpdate(silent) {
   if (!repo || repo.startsWith('VOTRE_NOM_GITHUB')) return;
   try {
     const data = await httpsGetJson('https://api.github.com/repos/' + repo + '/releases/latest');
-    const latest = (data.tag_name || '').replace(/^v/i, '');
+    const tag = (data.tag_name || 'main');           // ex: "v1.2.1" (garde le "v")
+    const latest = tag.replace(/^v/i, '');           // ex: "1.2.1"
     if (compareVersions(latest, config.appVersion) > 0) {
       // Une MAJ est dispo → on la télécharge et l'applique automatiquement
-      performAppUpdate(silent);
+      // On passe le TAG (pas "main") pour télécharger la vraie version de la release
+      performAppUpdate(silent, tag);
     }
   } catch (e) { /* échec réseau silencieux au démarrage */ }
 }
@@ -285,9 +287,11 @@ function runNpmInstall(callback) {
 }
 
 // Effectue la mise à jour complète de l'app depuis GitHub
-async function performAppUpdate(silent) {
+// ref = tag de la release (ex: "v1.2.1") ou "main" par défaut
+async function performAppUpdate(silent, ref) {
   const repo = config.updateRepo;
   const tmpDir = path.join(__dirname, '__update_tmp');
+  if (!ref) ref = 'main'; // fallback si pas de tag passé
 
   // Liste des fichiers de code à mettre à jour (les données utilisateur ne sont JAMAIS touchées)
   const FILES = ['main.js', 'index.html', 'langues.js', 'package.json', 'package-lock.json'];
@@ -295,17 +299,14 @@ async function performAppUpdate(silent) {
   try {
     if (win) win.webContents.send('update-result', { type: 'app', phase: 'downloading', silent });
 
-    // 1) Récupère la branche par défaut (ne pas hardcoded 'main')
-    const repoInfo = await httpsGetJson('https://api.github.com/repos/' + repo);
-    const branch = repoInfo.default_branch || 'main';
-
     // 2) Prépare le dossier temporaire (vide)
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
     fs.mkdirSync(tmpDir, { recursive: true });
 
     // 3) Télécharge chaque fichier dans le dossier temporaire
+    // ref = tag de la release (ex: "v1.2.1") → on télécharge la VRAIE version publiée
     // Les fichiers sont dans PROGRAM/ sur le dépôt GitHub (structure épurée)
-    const baseRaw = 'https://raw.githubusercontent.com/' + repo + '/' + branch + '/PROGRAM/';
+    const baseRaw = 'https://raw.githubusercontent.com/' + repo + '/' + ref + '/PROGRAM/';
     for (const f of FILES) {
       const ok = await httpsDownloadFile(baseRaw + f, path.join(tmpDir, f));
       if (!ok) {
@@ -349,7 +350,15 @@ async function performAppUpdate(silent) {
   }
 }
 
-ipcMain.on('perform-update', () => performAppUpdate(false));
+ipcMain.on('perform-update', async () => {
+  // Récupère le tag de la dernière release avant de lancer la MAJ manuelle
+  try {
+    const data = await httpsGetJson('https://api.github.com/repos/' + config.updateRepo + '/releases/latest');
+    performAppUpdate(false, data.tag_name || 'main');
+  } catch (e) {
+    performAppUpdate(false, 'main');
+  }
+});
 
 // ==========================================
 // GESTIONNAIRE DE MODÈLES — liste + téléchargement
