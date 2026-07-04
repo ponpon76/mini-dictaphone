@@ -14,7 +14,7 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LANGUE_PATH = path.join(__dirname, 'langue.txt');
 const UPDATE_CHECK_PATH = path.join(__dirname, 'last_update_check.txt');
 const DEFAULT_CONFIG = {
-  appVersion: '1.2.0',
+  appVersion: '1.2.1',
   updateRepo: 'ponpon76/mini-dictaphone',
   checkUpdatesOnLaunch: true,
   language: 'fr',
