@@ -34,6 +34,15 @@ _SAUVEGARDES/
 SAUVEGARDES/
 _backup/
 
+# === Doc privée (ne JAMAIS aller sur GitHub) ===
+_PRIVE/
+**/_PRIVE/
+**/BOOK.txt
+**/JOURNAL.txt
+**/BOOK_GITHUB.txt
+**/ROADMAP.txt
+**/INSTRUCTION_JOURNAL.txt
+
 # === Fichiers système ===
 Thumbs.db
 desktop.ini
