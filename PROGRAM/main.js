@@ -304,7 +304,8 @@ async function performAppUpdate(silent) {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     // 3) Télécharge chaque fichier dans le dossier temporaire
-    const baseRaw = 'https://raw.githubusercontent.com/' + repo + '/' + branch + '/';
+    // Les fichiers sont dans PROGRAM/ sur le dépôt GitHub (structure épurée)
+    const baseRaw = 'https://raw.githubusercontent.com/' + repo + '/' + branch + '/PROGRAM/';
     for (const f of FILES) {
       const ok = await httpsDownloadFile(baseRaw + f, path.join(tmpDir, f));
       if (!ok) {
