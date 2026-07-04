@@ -8,7 +8,7 @@ node_modules/
 
 # === Moteur et modèles Whisper (trop gros, l'utilisateur les télécharge) ===
 Whisper/
-*.bin
+ggml-*.bin
 
 # === Correcteur d'orthographe (Java + LanguageTool, ~350 Mo, téléchargés par l'app) ===
 Correcteur/

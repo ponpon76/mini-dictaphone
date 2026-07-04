@@ -1,64 +1,84 @@
 @echo off
 chcp 65001 >nul
 REM ============================================================
-REM  Mini Dictaphone V1.2
+REM  Mini Dictaphone V1.3
 REM  Fichier : DESINSTALLER.bat
 REM ============================================================
-title Desinstalleur Mini Dictaphone V1
+title Desinstalleur Mini Dictaphone V1.3
 color 0C
 
 :: LIT LA LANGUE
 set "LANG=fr"
 if exist "%~dp0langue.txt" set /p LANG=<"%~dp0langue.txt"
 
-:: LE DOSSIER A SUPPRIMER = celui qui contient ce .bat
-set "TARGET=%~dp0"
+:: LE DOSSIER A SUPPRIMER = celui qui contient ce .bat (SANS backslash final)
+for %%I in ("%~dp0.") do set "TARGET=%%~fI"
 
-:: BOITE DE CONFIRMATION
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Add-Type -AssemblyName PresentationFramework;" ^
-  "$msg = switch -Wildcard ('%LANG%') {" ^
-  "  'fr' { 'ATTENTION : cette action va SUPPRIMER DEFINITIVEMENT : le programme complet, le moteur Whisper + le modele, TOUTES vos sauvegardes (notes), TOUTES les pieces jointes. Vos notes seront PERDUES pour toujours. Confirmer ?' }" ^
-  "  'en' { 'WARNING: this action will PERMANENTLY DELETE: the complete program, the Whisper engine + model, ALL your saves (notes), ALL attachments. Your notes will be LOST forever. Confirm?' }" ^
-  "  'es' { 'ATENCION: esta accion ELIMINARA DEFINITIVAMENTE: el programa completo, el motor Whisper + el modelo, TODAS sus copias (notas), TODOS los archivos adjuntos. Sus notas se PERDERAN para siempre. Confirma?' }" ^
-  "  'pt' { 'ATENCAO: esta acao vai APAGAR DEFINITIVAMENTE: o programa completo, o motor Whisper + o modelo, TODOS os seus backups (notas), TODOS os anexos. As suas notas vao PERDER-SE para sempre. Confirmar?' }" ^
-  "  'de' { 'ACHTUNG: Diese Aktion wird DAUERHAFT LOSCHEN: das komplette Programm, die Whisper-Engine + Modell, ALLE Ihre Sicherungen (Notizen), ALLE Anhange. Ihre Notizen gehen FUR IMMER verloren. Bestatigen?' }" ^
-  "  'it' { 'ATTENZIONE: questa azione ELIMINERA DEFINITIVAMENTE: il programma completo, il motore Whisper + il modello, TUTTI i tuoi salvataggi (note), TUTTI gli allegati. Le tue note andranno PERSI per sempre. Confermi?' }" ^
-  "  default { 'ATTENTION : cette action va SUPPRIMER DEFINITIVEMENT : le programme complet, le moteur Whisper + le modele, TOUTES vos sauvegardes (notes), TOUTES les pieces jointes. Vos notes seront PERDUES pour toujours. Confirmer ?' }" ^
-  "};" ^
-  "$r = [System.Windows.MessageBox]::Show($msg, 'Mini Dictaphone V1', 'YesNo', 'Warning');" ^
-  "if ($r -eq 'No') { exit 7 } else { exit 6 }"
+:: BOITE DE CONFIRMATION (appel du script PowerShell dedie, a cote du .bat)
+:: Si le ps1 manque (install corrompue), on demande confirmation en cmd.
+:: CODES DE RETOUR du .ps1 : 6 = Oui (confirme), 7 = Non (annule), autre = erreur.
+:: BUG CORRIGE : avant on testait "if errorlevel 7" (= >= 7). Si le .ps1 plantait
+:: et retournait 1, le test echouait et la suppression se lancait SANS confirmation.
+:: Maintenant on n'avance QUE si le code est exactement 6. Sinon = annulation safe.
+if not exist "%~dp0desinstall_confirm.ps1" goto :confirm_cmd_fallback
 
-if errorlevel 7 (
-    echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0desinstall_confirm.ps1" -Lang "%LANG%"
+if "%errorlevel%"=="6" goto :confirm_ok
+echo.
+echo Desinstallation annulee (code retour %errorlevel%).
+timeout /t 2 /nobreak >nul
+exit
+
+:confirm_cmd_fallback
+echo ATTENTION : ce programme va etre supprime definitivement.
+set "CONFIRM="
+set /p CONFIRM="Confirmer ? (O/N) : "
+if /i not "%CONFIRM%"=="O" (
     echo Desinstallation annulee.
     timeout /t 2 /nobreak >nul
     exit
 )
+goto :confirm_ok
 
+:confirm_ok
 echo.
 echo Desinstallation de : %TARGET%
 echo.
 
-:: ETAPE 1/3 : SUPPRIME LE RACCOURCI BUREAU
-echo [1/3] Suppression du raccourci bureau...
-powershell -NoProfile -Command "Remove-Item '$([Environment]::GetFolderPath('Desktop'))\Mini Dictaphone V1.lnk' -ErrorAction SilentlyContinue; Remove-Item '$([Environment]::GetFolderPath('Desktop'))\Mini Dictaphone.lnk' -ErrorAction SilentlyContinue"
+:: ETAPE 1/4 : SUPPRIME LE RACCOURCI BUREAU
+echo [1/4] Suppression du raccourci bureau...
+if exist "%~dp0remove_shortcut.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0remove_shortcut.ps1"
+)
 echo       OK
 
-:: ETAPE 2/3 : GENERE UN SCRIPT VBS QUI SUPPRIMERA LE DOSSIER APRÈS FERMETURE
-:: VBS est plus fiable que .bat pour cette tache : il attend que le .bat
-:: principal soit ferme, puis supprime le dossier, puis s'auto-detruit.
-echo [2/3] Preparation de la suppression...
+:: ETAPE 2/4 : NETTOIE NODE.JS PORTABLE DU PATH (si installe par le dictaphone)
+echo [2/4] Nettoyage de Node.js portable...
+if exist "%~dp0remove_node_path.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0remove_node_path.ps1"
+)
+echo       OK
+
+:: ETAPE 3/4 : GENERE UN SCRIPT VBS QUI SUPPRIMERA LE DOSSIER APRES FERMETURE
+:: VBS est plus fiable que .bat : il attend que le .bat soit ferme, puis supprime.
+echo [3/4] Preparation de la suppression...
 set "VBS=%TEMP%\desinstall_dictaphone.vbs"
 
 > "%VBS%" echo Set fso = CreateObject("Scripting.FileSystemObject")
 >> "%VBS%" echo WScript.Sleep 1500
 >> "%VBS%" echo On Error Resume Next
 >> "%VBS%" echo fso.DeleteFolder "%TARGET%", True
+>> "%VBS%" echo If Err.Number ^<^> 0 Then
+>> "%VBS%" echo     ' Echec : on retente apres 3s
+>> "%VBS%" echo     Err.Clear
+>> "%VBS%" echo     WScript.Sleep 3000
+>> "%VBS%" echo     fso.DeleteFolder "%TARGET%", True
+>> "%VBS%" echo End If
+>> "%VBS%" echo On Error Resume Next
 >> "%VBS%" echo fso.DeleteFile WScript.ScriptFullName, True
 
-:: ETAPE 3/3 : LANCE LE VBS EN ARRIERE-PLAN PUIS SE FERME
-echo [3/3] Suppression du dossier...
+:: ETAPE 4/4 : LANCE LE VBS EN ARRIERE-PLAN PUIS SE FERME
+echo [4/4] Suppression du dossier...
 echo.
 echo ==========================================
 echo  DESINSTALLATION LANCEE

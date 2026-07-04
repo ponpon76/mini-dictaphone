@@ -184,9 +184,9 @@
     <div class="actions">
       <button id="btn-clear" class="action-btn" onclick="clearNote()" data-i18n="clear" data-i18n-title="clear">CLEAR</button>
       <button id="btn-copy" class="action-btn" onclick="copyText()" data-i18n="copier">COPIER</button>
-      <button id="btn-audio" class="action-btn btn-audio" onclick="toggleModeAudio()" data-i18n="audio" title="💾">💾 <span data-i18n="audio">AUDIO</span></button>
-      <button id="btn-translate" class="action-btn btn-audio" onclick="toggleModeTraduction()" title="🌐" data-i18n="traduire">🌐 <span data-i18n="traduire">TRADUIRE</span></button>
-      <button id="btn-webhook" class="action-btn btn-audio" onclick="toggleModeWebhook()" title="📤" data-i18n="envoyer">📤 <span data-i18n="envoyer">ENVOYER</span></button>
+      <button id="btn-audio" class="action-btn btn-audio" onclick="toggleModeAudio()" title="💾">💾 <span data-i18n="audio">AUDIO</span></button>
+      <button id="btn-translate" class="action-btn btn-audio" onclick="toggleModeTraduction()" title="🌐">🌐 <span data-i18n="traduire">TRADUIRE</span></button>
+      <button id="btn-webhook" class="action-btn btn-audio" onclick="toggleModeWebhook()" title="📤">📤 <span data-i18n="envoyer">ENVOYER</span></button>
       <button id="btn-folder" class="action-btn" onclick="openFolder()" title="📂">📂</button>
       <button id="btn-attach" class="action-btn" onclick="insererFichier()" title="📎">📎</button>
     </div>
@@ -197,6 +197,7 @@
         <option value="fr">🇫🇷 Français</option>
         <option value="en">🇬🇧 Anglais</option>
         <option value="es">🇪🇸 Espagnol</option>
+        <option value="pt">🇵🇹 Portugais</option>
         <option value="de">🇩🇪 Allemand</option>
         <option value="it">🇮🇹 Italien</option>
         <option value="auto">🌍 Auto</option>
@@ -258,8 +259,30 @@
     const fs = require('fs');
     const path = require('path');
     const http = require('http');
-    const { spawn } = require('child_process');
+    // Option A (sécurité C7) : require('child_process') RETIRÉ du renderer.
+    // La transcription Whisper passe maintenant par ipcRenderer.invoke('transcribe').
     const { TEXTES, LANGUE_DEFAUT } = require('./langues.js');
+
+    // Expose ipcRenderer sur window pour les onclick inline (sinon ReferenceError)
+    // Raison : en nodeIntegration:true, les const du script ne sont pas sur window
+    window.ipcRenderer = ipcRenderer;
+
+    // Échappe le HTML pour pouvoir injecter des valeurs utilisateur (URL webhook,
+    // token, nom GPU...) dans des template literals sans risque XSS. Évite qu'une
+    // URL contenant " onfocus="..." déclenche du code.
+    // m4 : échappe aussi les backticks et ${ pour ne pas casser les template
+    // literals JS dans lesquels les valeurs sont injectées (sinon une valeur
+    // contenant ` ou ${} pourrait fermer le template et exécuter du code).
+    function escHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;')
+        .replace(/\$\{/g, '$&#123;');
+    }
 
     let isRecording = false;
     let isTranscribing = false;
@@ -267,6 +290,11 @@
     let interfaceLang = 'fr';      // langue de l'INTERFACE (menus, boutons)
     let T = TEXTES[LANGUE_DEFAUT]; // raccourci vers les textes actuels
     let appConfig = null;
+
+    // Notifie le main process de l'état occupé (pour bloquer l'auto-update pendant une dictée)
+    function notifyBusy() {
+      ipcRenderer.send('set-busy', isRecording || isTranscribing);
+    }
 
     // ==========================================
     // CONFIG (chargement asynchrone au démarrage)
@@ -518,6 +546,16 @@
     }
 
     // ==========================================
+    // CHANGEMENT DE LANGUE DE TRANSCRIPTION (Whisper)
+    // ==========================================
+    function changeLang(code) {
+      currentLang = code;
+      ipcRenderer.invoke('config-set', { language: code });
+    }
+    // Expose pour les onclick inline (contextIsolation:false mais const pas sur window)
+    window.changeLang = changeLang;
+
+    // ==========================================
     // CAPTURE MICRO + VU METER
     // ==========================================
     let audioCtx = null, mediaStream = null, sourceNode = null, recorderNode = null, analyser = null;
@@ -546,9 +584,15 @@
       registerProcessor('recorder-processor', RecorderProcessor);
     `;
 
+    let captureSampleRate = 16000; // fréquence réelle de l'AudioContext (pour le resampler)
+
     async function demarrerCapture() {
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-      audioCtx = new AudioContext({ sampleRate: 16000 });
+      // M5 : on ne force PLUS sampleRate:16000. Certains drivers/périphériques refusent
+      // 16000 Hz et lèvent une exception → micro injoignable. On laisse le système
+      // choisir (44100/48000...) puis on resample vers 16000 avant l'encodage WAV.
+      audioCtx = new AudioContext();
+      captureSampleRate = audioCtx.sampleRate;
       const blob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
       const url = URL.createObjectURL(blob);
       await audioCtx.audioWorklet.addModule(url);
@@ -619,6 +663,24 @@
       });
     }
 
+    // Resample linéaire d'un Float32Array vers une fréquence cible (16 kHz).
+    // Nécessaire car l'AudioContext n'est plus forcé à 16000 Hz (bug M5).
+    // Le resampling linéaire est suffisant pour la parole (Whisper est robuste).
+    function resampler(samples, srcRate, dstRate) {
+      if (srcRate === dstRate || !samples || samples.length === 0) return samples;
+      const ratio = srcRate / dstRate;
+      const newLen = Math.floor(samples.length / ratio);
+      const out = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        const srcPos = i * ratio;
+        const i0 = Math.floor(srcPos);
+        const i1 = Math.min(i0 + 1, samples.length - 1);
+        const frac = srcPos - i0;
+        out[i] = samples[i0] * (1 - frac) + samples[i1] * frac;
+      }
+      return out;
+    }
+
     function encoderWav(samples, sampleRate) {
       const buffer = new ArrayBuffer(44 + samples.length * 2);
       const view = new DataView(buffer);
@@ -633,39 +695,21 @@
     }
 
     // ==========================================
-    // APPEL WHISPER
+    // APPEL WHISPER (Option A — la transcription se fait dans main.js via IPC)
     // ==========================================
-    function lancerWhisper(wavPath, modelPath, translate) {
-      return new Promise((resolve, reject) => {
-        const exePath = path.join(whisperDir, 'main.exe');
-        const langArg = currentLang === 'auto' ? 'auto' : currentLang;
-        // -l auto = détection auto de la langue source. -tr = traduire vers l'anglais.
-        const args = ['-m', modelPath, '-l', langArg, '-otxt', '-nc', '-nt', '-mc', '0'];
-        if (translate) args.push('-tr');
-        args.push(wavPath);
-        const child = spawn(exePath, args, { cwd: whisperDir, windowsHide: true });
-        let stdout = '', stderr = '';
-        child.stdout.on('data', d => { stdout += d.toString(); });
-        child.stderr.on('data', d => { stderr += d.toString(); });
-        let done = false;
-        const timer = setTimeout(() => { if (!done) { done = true; try { child.kill(); } catch (e) {} reject(new Error('Timeout 60s')); } }, 60000);
-        child.on('error', (err) => { if (done) return; done = true; clearTimeout(timer); reject(new Error('main.exe : ' + err.message)); });
-        child.on('close', (code) => {
-          if (done) return; done = true; clearTimeout(timer);
-          // Whisper crée un fichier .txt SANS l'extension .wav :
-          // dictee.wav -> dictee.txt   (et non dictee.wav.txt)
-          const txtPath = wavPath.replace(/\.wav$/i, '.txt');
-          try {
-            const text = fs.readFileSync(txtPath, 'utf8').trim();
-            resolve(text);
-            return;
-          } catch (e) {
-            // Le .txt n'existe pas : on affiche TOUT ce que Whisper a dit pour diagnostiquer
-            const diag = (stdout + '\n' + stderr).slice(-300);
-            reject(new Error('code ' + code + ' — ' + diag));
-          }
-        });
-      });
+    // Le renderer ne lance PLUS main.exe lui-même (faille RCE C7 fermée : il n'a
+    // plus accès à child_process). Il demande la transcription à main.js, qui
+    // renvoie { text } en cas de succès ou { error, causeGPU, diag } sinon.
+    // Le renderer garde la traduction des messages d'erreur (il a T.* ).
+    async function lancerWhisper(wavPath, modelPath, translate) {
+      const lang = currentLang === 'auto' ? 'auto' : currentLang;
+      const r = await ipcRenderer.invoke('transcribe', { wavPath, modelPath, lang, translate });
+      if (r.text !== undefined) return r.text;
+      // Erreur : on la traduit/formate côté renderer (les T.* sont ici)
+      if (r.causeGPU) {
+        throw new Error(T.gpu_incompatible || 'GPU incompatible — Whisper nécessite une carte graphique supportant DirectX 11+. Carte trop ancienne, GPU désactivé, ou machine virtuelle sans GPU.');
+      }
+      throw new Error(r.error + (r.diag ? ' — ' + r.diag : ''));
     }
 
     // Filtre les transcriptions parasites de Whisper (bruits non-parlés)
@@ -674,8 +718,10 @@
       if (!texte) return '';
       const lignes = texte.split('\n');
       const filtres = [
+        // FR
         /^\s*\[?\s*(bruit|son|musique|audio|silence|générique|applaudissement)/i,
-        /^\s*\[\s*(bruit|son|musique|audio|silence)/i
+        // EN (BLANK_AUDIO, Music, etc. — Whisper localise parfois en anglais)
+        /^\s*\[?\s*(blank_audio|music|sound|noise|silence|inaudible|applause|background)/i
       ];
       const gardees = lignes.filter(l => {
         const t = l.trim();
@@ -735,7 +781,9 @@
               // Filtre les "fautes" dont le mot fautif est dans le dictionnaire personnel
               if (dicoPerso.length > 0) {
                 matches = matches.filter(m => {
-                  const motFautif = texte.substr(m.offset, m.length).trim().toLowerCase();
+                  // m27 : slice(offset, offset+length) — pas slice(offset, length).
+                  // Le 2e arg de slice est l'INDEX DE FIN, pas la longueur.
+                  const motFautif = texte.slice(m.offset, m.offset + m.length).trim().toLowerCase();
                   return !dicoPerso.includes(motFautif);
                 });
               }
@@ -770,10 +818,25 @@
         el.innerHTML = '<div class="meta" style="opacity:0.6">' + T.dico_vide + '</div>';
         return;
       }
-      el.innerHTML = dicoPerso.map(mot =>
-        '<div class="modal-row" style="padding:4px 8px;"><div>' + mot + '</div>' +
-        '<button class="modal-btn secondary" onclick="retirerDuDictionnaire(\'' + mot.replace(/'/g, "\\'") + '\')">✕</button></div>'
-      ).join('');
+      // Construction via DOM (pas de innerHTML avec onclick inline) :
+      // évite l'injection HTML/XSS si un mot contient ", <, > ou '.
+      // Le mot est stocké dans un attribut data-mot et lu au clic.
+      el.innerHTML = '';
+      for (const mot of dicoPerso) {
+        const row = document.createElement('div');
+        row.className = 'modal-row';
+        row.style.cssText = 'padding:4px 8px;';
+        const label = document.createElement('div');
+        label.textContent = mot; // textContent = pas d'interprétation HTML
+        const btn = document.createElement('button');
+        btn.className = 'modal-btn secondary';
+        btn.textContent = '✕';
+        btn.dataset.mot = mot; // stockage sûr (pas d'injection)
+        btn.addEventListener('click', () => retirerDuDictionnaire(btn.dataset.mot));
+        row.appendChild(label);
+        row.appendChild(btn);
+        el.appendChild(row);
+      }
     }
 
     async function ajouterMotDicoManuel() {
@@ -803,10 +866,15 @@
       let result = texte;
       let nbCorrige = 0;
       const offsetsUtilises = new Set();
+      const plagesUtilisees = [];  // [{start, end}] pour ignorer les fautes chevauchantes
       for (const m of certains) {
+        // Ignore les fautes chevauchantes (offset dans une plage déjà corrigée)
+        const chevauche = plagesUtilisees.some(p => m.offset >= p.start && m.offset < p.end);
+        if (chevauche) continue;
         result = result.slice(0, m.offset) + m.replacements[0] + result.slice(m.offset + m.length);
         nbCorrige++;
         offsetsUtilises.add(m.offset);
+        plagesUtilisees.push({ start: m.offset, end: m.offset + m.length });
       }
       // Les fautes non corrigées (ambiguës ou 0 proposition) restent pour le panneau
       const restantes = matches.filter(m => !offsetsUtilises.has(m.offset));
@@ -822,7 +890,7 @@
 
     async function finaliserTranscription() {
       const output = document.getElementById('text-output');
-      isTranscribing = true; setControlsEnabled(false);
+      isTranscribing = true; setControlsEnabled(false); notifyBusy();
       flash(T.transcription_en_cours); // notification discrète, pas de texte dans l'écran
       try {
         await arreterCapture();
@@ -832,7 +900,10 @@
         }
         fs.mkdirSync(tempDir, { recursive: true });
         const wavPath = path.join(tempDir, 'dictee.wav');
-        fs.writeFileSync(wavPath, encoderWav(recordedSamples, 16000));
+        // M5 : on resample les samples capturés (44100/48000...) vers 16 kHz,
+        // car l'AudioContext n'est plus forcé à 16000 Hz (certains drivers refusent).
+        const samples16k = resampler(recordedSamples, captureSampleRate, 16000);
+        fs.writeFileSync(wavPath, encoderWav(samples16k, 16000));
         recordedSamples = null;
         const w = checkWhisper();
         const texteBrut = await lancerWhisper(wavPath, w.modelPath, modeTraduction);
@@ -867,25 +938,40 @@
           const insertPos = output.value.length;
           output.value += texteFinal + "\n";
           if (sauvegarderNoteCourante()) flash(T.sauvegarde_ok);
-          // Envoi webhook n8n si armé (auto après chaque dictée)
-          if (modeWebhook) envoyerVersWebhook(texteFinal);
           // Mode semi-auto : ouvre le panneau de relecture (si des fautes restent)
           if (matchesRestants.length > 0) {
-            relectureEnCours = { texteBase: texte, matches: matchesRestants, indexCourant: 0, insertPos: insertPos, texteOriginalLen: texte.length, resolues: [] };
+            // BUG M2 CORRIGÉ : en mode semi-auto + webhook, on reporte l'envoi à la
+            // fin de la relecture, sinon le webhook recevait le texte NON corrigé.
+            // On stocke le flag dans relectureEnCours pour l'envoyer dans validerRelecture().
+            relectureEnCours = { texteBase: texte, matches: matchesRestants, indexCourant: 0, insertPos: insertPos, texteOriginalLen: texte.length, resolues: [], pendingWebhook: modeWebhook };
             renderPanierRelecture();
             document.getElementById('relecture-overlay').classList.add('show');
+          } else {
+            // Pas de relecture : on envoie le webhook maintenant avec le texte final
+            // (déjà corrigé en mode auto, ou brut si pas de correction).
+            if (modeWebhook) envoyerVersWebhook(texteFinal);
           }
         } else flash(T.transcrip_vide);
       } catch (err) {
         output.value += "[" + T.erreur_transcrip + "] " + err.message + "\n";
       } finally {
-        isTranscribing = false; setControlsEnabled(true);
+        isTranscribing = false; setControlsEnabled(true); notifyBusy();
         output.scrollTop = output.scrollHeight;
       }
     }
 
     function setControlsEnabled(enabled) {
-      ['btn-clear', 'btn-copy', 'btn-folder', 'btn-attach', 'btn-cancel', 'btn-on-off'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !enabled; });
+      // m1 : btn-cancel retiré de cette liste — il est géré séparément par
+      // setCancelButtonState() car il n'est utile QUE pendant l'enregistrement.
+      ['btn-clear', 'btn-copy', 'btn-folder', 'btn-attach', 'btn-on-off', 'btn-audio', 'btn-translate', 'btn-webhook'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !enabled; });
+    }
+
+    // m1 : le bouton ANNULER n'a d'effet que pendant l'enregistrement. Avant il
+    // restait cliquable au repos (sans rien faire). Maintenant il est désactivé
+    // hors enregistrement → UX plus claire.
+    function setCancelButtonState() {
+      const btn = document.getElementById('btn-cancel');
+      if (btn) btn.disabled = !isRecording;
     }
 
     // ==========================================
@@ -927,9 +1013,11 @@
       const btnTr = document.getElementById('btn-translate');
       if (btnTr) btnTr.classList.toggle('armed', modeTraduction);
       // Restaure l'état visuel du bouton Webhook (depuis config)
-      modeWebhook = appConfig && appConfig.modeWebhook && appConfig.webhookUrl ? true : false;
+      modeWebhook = appConfig && appConfig.webhookUrl && appConfig.webhookUrl ? true : false;
       const btnWh = document.getElementById('btn-webhook');
       if (btnWh) btnWh.classList.toggle('armed', modeWebhook);
+      // m1 : bouton ANNULER désactivé au démarrage (pas d'enregistrement en cours)
+      setCancelButtonState();
     }
 
     // Confirmation du choix de langue (premier lancement)
@@ -956,7 +1044,16 @@
     // ==========================================
     // BOUTONS BARRE HAUTE
     // ==========================================
-    function closeApp() { if (!isTranscribing) sauvegarderNoteCourante(); ipcRenderer.send('close-window'); }
+    // m5 : on arrête la capture audio AVANT de fermer. Sinon, fermer la fenêtre
+    // pendant un enregistrement laissait le micro actif jusqu'à la fin du process,
+    // et le VU meter tournait dans le vide.
+    function closeApp() {
+      if (!isTranscribing) {
+        sauvegarderNoteCourante();
+        if (isRecording) { arreterCapture(); isRecording = false; }
+      }
+      ipcRenderer.send('close-window');
+    }
     function minimizeApp() { ipcRenderer.send('minimize-window'); }
     function maximizeApp() { ipcRenderer.send('maximize-window'); }
     function openSettings() { ipcRenderer.send('open-sound-settings'); }
@@ -1051,14 +1148,16 @@
       const output = document.getElementById('text-output');
       if (!isRecording) {
         const w = checkWhisper();
-        if (!w.ready) { output.value += "[ERREUR] : " + T.moteur_manquant + " " + w.missing + ". ⚙️.\n"; output.scrollTop = output.scrollHeight; return; }
+        if (!w.ready) { output.value += T.moteur_manquant + " " + w.missing + ". ⚙️\n"; output.scrollTop = output.scrollHeight; return; }
         try {
           await demarrerCapture();
-          isRecording = true; btn.classList.add('active'); btn.innerText = T.enregistrement;
+          isRecording = true; btn.classList.add('active'); btn.innerText = T.enregistrement; notifyBusy();
+          setCancelButtonState(); // m1 : active ANNULER pendant l'enregistrement
           // Pas de message "Micro activé" : silence visuel
         } catch (err) { output.value += "[ERREUR MICRO] : " + err.message + "\n"; }
       } else {
-        isRecording = false; btn.classList.remove('active'); btn.innerText = T.on_off;
+        isRecording = false; btn.classList.remove('active'); btn.innerText = T.on_off; notifyBusy();
+        setCancelButtonState(); // m1 : désactive ANNULER hors enregistrement
         // Pas de message "Micro arrêté" : silence visuel
         await finaliserTranscription();
       }
@@ -1067,9 +1166,10 @@
 
     async function cancelRecording() {
       if (isRecording) {
-        isRecording = false;
+        isRecording = false; notifyBusy();
         document.getElementById('btn-on-off').classList.remove('active');
         document.getElementById('btn-on-off').innerText = T.on_off;
+        setCancelButtonState(); // m1 : désactive ANNULER
         await arreterCapture(); recordedSamples = null;
         // Pas de message : silencieux
       }
@@ -1081,7 +1181,13 @@
     let currentModel = '';
 
     function openUpdatePanel() { renderModal(); document.getElementById('modal').classList.add('show'); }
-    function closeModal() { document.getElementById('modal').classList.remove('show'); }
+    function closeModal() {
+      document.getElementById('modal').classList.remove('show');
+      // Reset l'état de vérification : sans ça, updateCheckActive restait true
+      // après un clic, et les prochains update-result silencieux (au démarrage)
+      // continuaient à peupler updateResults → réaffichage d'un état périmé.
+      updateCheckActive = false;
+    }
 
     async function renderModal() {
       const content = document.getElementById('modal-content');
@@ -1102,7 +1208,7 @@
             <option value="it">🇮🇹 Italiano</option>
           </select>
         </div>
-        <div class="modal-row"><div><b>${T.gpu_detecte}</b><div class="meta">${gpu}</div></div></div>
+        <div class="modal-row"><div><b>${T.gpu_detecte}</b><div class="meta" id="gpu-meta">${escHtml(gpu)}</div></div><button class="modal-btn secondary" onclick="redetectGpu()">${T.gpu_redetect || '↻'}</button></div>
         <div class="modal-row"><div><b>${T.correcteur_ortho}</b><div class="meta" id="lt-status-meta">${T.chargement}</div><div class="progress-bar" id="prog-lt" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div><button class="modal-btn" id="lt-btn" onclick="installCorrecteur()">${T.installer}</button></div>
         <div class="modal-row"><div><b>${T.mode_correction}</b><div class="meta">${T.mode_correction_info}</div></div>
           <select id="lt-mode-select" onchange="changerModeCorrection(this.value)" style="background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:3px 6px; font-size:11px; cursor:pointer;">
@@ -1121,8 +1227,8 @@
         </div>
         <div class="modal-row" style="flex-direction:column; align-items:stretch;">
           <div><b>📤 ${T.webhook_titre}</b><div class="meta">${T.webhook_info}</div></div>
-          <input id="webhook-url" placeholder="${T.webhook_placeholder}" value="${appConfig && appConfig.webhookUrl ? appConfig.webhookUrl : ''}" style="margin-top:6px; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
-          <input id="webhook-token" placeholder="${T.webhook_token_ph}" value="${appConfig && appConfig.webhookToken ? appConfig.webhookToken : ''}" style="margin-top:4px; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
+          <input id="webhook-url" placeholder="${T.webhook_placeholder}" value="${appConfig && appConfig.webhookUrl ? escHtml(appConfig.webhookUrl) : ''}" style="margin-top:6px; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
+          <input id="webhook-token" placeholder="${T.webhook_token_ph}" value="${appConfig && appConfig.webhookToken ? escHtml(appConfig.webhookToken) : ''}" style="margin-top:4px; background:rgba(0,0,0,0.3); color:#cdd6f4; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; font-size:11px;" />
           <div style="display:flex; gap:4px; margin-top:6px;">
             <button class="modal-btn" onclick="sauverWebhookConfig()" style="flex:1;">💾 ${T.webhook_sauver}</button>
             <button class="modal-btn secondary" onclick="testerWebhook()" style="flex:1;">🔌 ${T.webhook_tester}</button>
@@ -1193,6 +1299,16 @@
       }
     }
 
+    // C5 : force la redétection du GPU (bouton ↻ dans ⚙️). Utile si l'utilisateur
+    // a changé de carte graphique ou branché un GPU externe depuis l'install.
+    async function redetectGpu() {
+      const meta = document.getElementById('gpu-meta');
+      if (meta) meta.textContent = T.verification;
+      const nouveau = await ipcRenderer.invoke('redetect-gpu');
+      if (meta) meta.textContent = nouveau || '?';
+      flash(T.gpu_redetect_ok || 'GPU redétecté');
+    }
+
     // ==========================================
     // ÉTAT DE LA FILE DE TÉLÉCHARGEMENT (anti-double-clic + file visible)
     // ==========================================
@@ -1234,9 +1350,10 @@
     // MISES À JOUR — vérification globale (app + Whisper en une fois)
     // ==========================================
     // Stocke les 2 résultats (app + whisper-exe) au fur et à mesure, puis
-    // rend l'affichage consolidé dans #all-update-info. On garde le lancement
-    // automatique au démarrage (checkAppUpdate, silencieux) pour le point
-    // rouge de notification, mais l'utilisateur a UN seul bouton pour tout.
+    // rend l'affichage consolidé dans #all-update-info. La vérif automatique
+    // au démarrage (point rouge de notification) est gérée côté main process
+    // (checkAndAutoUpdate dans main.js), pas ici. L'utilisateur a UN seul
+    // bouton "🔍 Tout vérifier" pour tout déclencher manuellement.
     let updateResults = { app: null, whisper: null };
     let updateCheckActive = false; // true uniquement pendant une vérif lancée par clic
 
@@ -1248,9 +1365,6 @@
       ipcRenderer.send('check-app-update');
       ipcRenderer.send('check-whisper-update');
     }
-
-    // Lancée au démarrage (silencieux) pour le point rouge de notification
-    function checkAppUpdate() { ipcRenderer.send('check-app-update'); }
 
     // Construit le rendu HTML consolidé des 2 résultats dans #all-update-info
     function renderAllUpdates() {
@@ -1264,6 +1378,14 @@
         rows.push(`<div class="modal-row"><div><b>${T.executable_whisper}</b><div class="meta">${updateResults.whisper}</div></div></div>`);
       }
       info.innerHTML = rows.join('');
+      // C7 : branche les boutons "Ouvrir" via délégation (l'URL est dans data-open-url,
+      // échappée). Pas d'onclick inline avec URL brute = pas d'injection JS possible.
+      info.querySelectorAll('button[data-open-url]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const u = btn.getAttribute('data-open-url');
+          if (u) require('electron').shell.openExternal(u);
+        });
+      });
     }
 
     ipcRenderer.on('update-result', (_e, r) => {
@@ -1304,7 +1426,9 @@
         } else {
           // On ne sait pas détecter la version installée de main.exe, donc on
           // affiche juste la dernière dispo (lien si MAJ souhaitée).
-          updateResults.whisper = `${T.derniere_version}: ${r.latest} <button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">${T.ouvrir}</button>`;
+          // C7 : escHtml sur r.url (qui vient de l'API GitHub) — sinon une URL
+          // contenant ' ou ); cassait le JS, voire ouvrait une faille RCE.
+          updateResults.whisper = `${T.derniere_version}: ${r.latest} <button class="modal-btn" data-open-url="${escHtml(r.url)}">${T.ouvrir}</button>`;
         }
         renderAllUpdates();
       }
@@ -1484,15 +1608,6 @@
     // relectureEnCours = { texteBase, matches, indexCourant, insertPos }
     let relectureEnCours = null;
 
-    // Ouvre le panneau de relecture avec les fautes détectées sur un bloc dicté.
-    // insertPos = position dans le textarea où le texte corrigé sera inséré.
-    function ouvrirPanierRelecture(texte, matches, insertPos) {
-      if (matches.length === 0) return;
-      relectureEnCours = { texteBase: texte, matches: matches.slice(), indexCourant: 0, insertPos: insertPos, resolues: [] };
-      renderPanierRelecture();
-      document.getElementById('relecture-overlay').classList.add('show');
-    }
-
     function fermerPanierRelecture() {
       document.getElementById('relecture-overlay').classList.remove('show');
       relectureEnCours = null;
@@ -1506,9 +1621,10 @@
       if (!m) { fermerPanierRelecture(); flash(T.relecture_finie); return; }
       const num = rl.indexCourant + 1;
       const total = rl.matches.length;
-      const contexte = m.context || rl.texteBase.substr(m.offset, m.length);
+      const contexte = m.context || rl.texteBase.slice(m.offset, m.offset + m.length);
       // Extrait le mot fautif depuis le contexte (entouré de *)
-      const motFautif = rl.texteBase.substr(m.offset, m.length);
+      // m27 : slice(offset, offset+length) — pas slice(offset, length).
+      const motFautif = rl.texteBase.slice(m.offset, m.offset + m.length);
       document.getElementById('relecture-num').textContent = num + ' / ' + total;
       document.getElementById('relecture-message').textContent = m.message;
       document.getElementById('relecture-contexte').textContent = contexte;
@@ -1558,7 +1674,8 @@
       if (!relectureEnCours) return;
       const rl = relectureEnCours;
       const m = rl.matches[rl.indexCourant];
-      const mot = rl.texteBase.substr(m.offset, m.length).trim();
+      // m27 : slice(offset, offset+length).
+      const mot = rl.texteBase.slice(m.offset, m.offset + m.length).trim();
       if (mot) await ajouterAuDictionnaire(mot); // défini en Phase 1.4
       rl.indexCourant++;
       renderPanierRelecture();
@@ -1575,10 +1692,15 @@
       const apres = output.value.slice(rl.insertPos + rl.texteOriginalLen);
       output.value = avant + rl.texteBase + apres;
       sauvegarderNoteCourante();
+      // BUG M2 : si le webhook était armé, on envoie MAINTENANT le texte corrigé
+      // (et non le texte brut avant relecture comme avant).
+      if (rl.pendingWebhook) envoyerVersWebhook(rl.texteBase);
       fermerPanierRelecture();
     }
 
-    // Au démarrage de l'app : si le correcteur est installé, on lance le serveur en silence
+    // Au démarrage de l'app : si le correcteur est installé, on lance le serveur en silence.
+    // Cette IIFE peut s'exécuter AVANT initConfig() (qui tourne via demarrageNormal sur
+    // DOMContentLoaded). Le "if (!appConfig)" évite alors un double chargement de config.
     (async () => {
       // Charge le mode de correction depuis config
       if (!appConfig) appConfig = await ipcRenderer.invoke('config-get');

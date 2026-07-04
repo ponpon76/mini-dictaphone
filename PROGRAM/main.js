@@ -4,16 +4,57 @@
 //  Open source - libre de réutilisation et modification
 //  Fichier : main.js (processus principal Electron)
 // ============================================================
-const { app, BrowserWindow, shell, globalShortcut, ipcMain, dialog, session, net } = require('electron');
+const { app, BrowserWindow, shell, globalShortcut, ipcMain, dialog, session, net, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
 
+// ==========================================
+// MUR D'ENCEINTE VAUBAN — whitelist réseau centralisée
+// ==========================================
+// Toutes les fonctions réseau de l'app (httpsGetJson, httpsDownloadFile,
+// downloadWithProgress, webhook) interrogent isHostAllowed() AVANT de se
+// connecter. Un host absent de la liste = refus immédiat, aucune connexion.
+// Objectif : même si une faille permettait à du code malveillant d'appeler
+// https.get(), il ne pourrait parler qu'aux destinations ci-dessous.
+// Les MAJ/auto-update, téléchargements de modèles, Java, LanguageTool, et le
+// webhook n8n de l'utilisateur sont les SEULS autorisés. Tout le reste bloqué.
+const HOSTS_AUTORISES = [
+  'api.github.com',           // API GitHub (vérif MAJ + releases)
+  'raw.githubusercontent.com',// Fichiers de code source (auto-update)
+  'nodejs.org',               // Téléchargement Node.js portable
+  'huggingface.co',           // Modèles Whisper (ggml-*.bin)
+  'cdn-lfs.huggingface.co',   // CDN de redirection HuggingFace (modèles)
+  'api.adoptium.net',         // Java Temurin (pour le correcteur)
+  'github.com',               // Releases Const-me/Whisper (cli.zip)
+  'objects.githubusercontent.com', // CDN GitHub releases (cli.zip, assets)
+  'languagetool.org'          // LanguageTool (correcteur)
+];
+
+// Vérifie si un host est autorisé par le mur Vauban.
+// - host : le hostname à tester (ex: "api.github.com")
+// - isWebhook : true si l'URL vient du webhook n8n configuré par l'utilisateur
+//   (dans ce cas on autorise TOUS les hosts valides http/https, car l'utilisateur
+//   choisit sa propre destination n8n — sinon le dictaphone ne pourrait jamais
+//   parler à un n8n auto-hébergé sur un domaine perso).
+function isHostAllowed(host, isWebhook) {
+  if (!host) return false;
+  const h = host.toLowerCase();
+  if (HOSTS_AUTORISES.includes(h)) return true;
+  // localhost et 127.0.0.1 toujours autorisés (LanguageTool local + n8n local)
+  if (h === 'localhost' || h === '127.0.0.1' || /^127\.\d+\.\d+\.\d+$/.test(h)) return true;
+  // Webhook utilisateur : on autorise tout host http(s) valide (l'utilisateur
+  // configure son propre n8n — on ne peut pas whitelist un domaine inconnu).
+  // MAIS on refuse les schémas dangereux (file://, etc.) — géré par parseWebhookUrl.
+  if (isWebhook) return true;
+  return false;
+}
+
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LANGUE_PATH = path.join(__dirname, 'langue.txt');
 const DEFAULT_CONFIG = {
-  appVersion: '1.2.0',
+  appVersion: '1.3.0',
   updateRepo: 'ponpon76/mini-dictaphone',
   checkUpdatesOnLaunch: true,
   language: 'fr',
@@ -22,6 +63,10 @@ const DEFAULT_CONFIG = {
 
 let win;
 let gpuName = 'Inconnue';
+let isBusy = false;  // true si le renderer est en train d'enregistrer/transcrire (bloque le redémarrage auto)
+
+// Le renderer notifie son état occupé (pour bloquer l'auto-update pendant une dictée)
+ipcMain.on('set-busy', (_e, busy) => { isBusy = busy; });
 
 // ==========================================
 // CONFIG PERSISTANTE
@@ -30,14 +75,29 @@ function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const c = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      return Object.assign({}, DEFAULT_CONFIG, c, { window: Object.assign({}, DEFAULT_CONFIG.window, c.window || {}) });
+      const cfg = Object.assign({}, DEFAULT_CONFIG, c, { window: Object.assign({}, DEFAULT_CONFIG.window, c.window || {}) });
+      // Clés d'AUTORITÉ DU CODE : imposées par DEFAULT_CONFIG, jamais par config.json.
+      // Sans ça, appVersion resterait figé à l'ancienne valeur (config.json n'est pas
+      // mis à jour par l'auto-update) → la comparaison de version croirait à tort
+      // qu'une MAJ est dispo à CHAQUE lancement → boucle de MAJ infinie.
+      cfg.appVersion = DEFAULT_CONFIG.appVersion;
+      cfg.updateRepo = DEFAULT_CONFIG.updateRepo;
+      return cfg;
     }
   } catch (e) {}
   return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 }
 
 function saveConfig(cfg) {
-  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8'); } catch (e) {}
+  try {
+    // Ne persiste JAMAIS les clés d'autorité du code (appVersion/updateRepo) :
+    // elles sont forcées par DEFAULT_CONFIG au chargement. Les garder dans
+    // config.json provoquerait une boucle de MAJ infinie (cf. loadConfig).
+    const toSave = Object.assign({}, cfg);
+    delete toSave.appVersion;
+    delete toSave.updateRepo;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(toSave, null, 2), 'utf8');
+  } catch (e) {}
 }
 
 // ==========================================
@@ -76,6 +136,27 @@ function createWindow() {
   win = new BrowserWindow(opts);
   win.loadFile('index.html');
 
+  // ==========================================
+  // MENU CONTEXTUEL (clic droit sur le textarea)
+  // ==========================================
+  // Menu natif Electron : Copier, Coller, Couper, Sélectionner tout, Annuler.
+  // Avantage : zéro code de rendu côté renderer (pas de HTML/JS injecté),
+  // et c'est le moteur Chromium qui gère → sûr (pas de surface d'attaque).
+  // Permet à l'utilisateur de copier/coller/supprimer sans faire d'allers-retours
+  // vers les boutons en haut (Copier) et en bas (Clear) de la fenêtre.
+  win.webContents.on('context-menu', (_event, params) => {
+    const menu = Menu.buildFromTemplate([
+      { role: 'undo',  label: 'Annuler',  enabled: params.editFlags.canUndo },
+      { type: 'separator' },
+      { role: 'cut',   label: 'Couper',   enabled: params.editFlags.canCut  && params.selectionText },
+      { role: 'copy',  label: 'Copier',   enabled: params.editFlags.canCopy && params.selectionText },
+      { role: 'paste', label: 'Coller',   enabled: params.editFlags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll', label: 'Tout sélectionner' }
+    ]);
+    menu.popup(win);
+  });
+
   // Sauvegarde position/taille pendant le déplacement/resize
   const saveBounds = () => {
     if (!win) return;
@@ -89,22 +170,56 @@ function createWindow() {
 
 // ==========================================
 // DÉTECTION GPU (pour conseiller un modèle Whisper)
+// Asynchrone + cache dans config.json (évite de ralentir le démarrage à chaque fois)
 // ==========================================
-function detectGpu() {
-  try {
-    const { execSync } = require('child_process');
-    // PowerShell fonctionne sur toutes les versions de Windows (wmic est supprimé sur Win11 récent)
-    const out = execSync('powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"', { encoding: 'utf8' });
-    const cards = out.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-    if (cards.length > 0) gpuName = cards.join(' | ');
-  } catch (e) {}
+// TTL du cache GPU : 30 jours. Au-delà, on refait la détection (changement de
+// carte, GPU externe branché, etc.). Avant le cache était permanent → un
+// changement matériel n'était jamais pris en compte dans le conseil modèle.
+const GPU_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function detectGpuAsync(force) {
+  // Si cache récent et pas de forçage, on ne refait pas la détection
+  if (!force && config.gpuName && config.gpuName !== 'Inconnue') {
+    const age = config.gpuDetectedAt ? (Date.now() - config.gpuDetectedAt) : Infinity;
+    if (age < GPU_CACHE_TTL_MS) { gpuName = config.gpuName; return; }
+  }
+  const { exec } = require('child_process');
+  // windowsHide:true → pas de fenêtre PowerShell qui flash au démarrage (m14).
+  exec('powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"', { encoding: 'utf8', windowsHide: true }, (err, stdout) => {
+    if (err || !stdout) return;
+    const cards = stdout.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+    if (cards.length > 0) {
+      gpuName = cards.join(' | ');
+      // Met à jour le cache dans config.json (avec timestamp d'invalidation)
+      try {
+        config.gpuName = gpuName;
+        config.gpuDetectedAt = Date.now();
+        saveConfig(config);
+      } catch (e) {}
+    }
+  });
 }
 
 // ==========================================
 // APP READY
 // ==========================================
+// Single-instance lock : empêche de lancer 2 instances en parallèle
+// (conflit sur les raccourcis globaux + port LanguageTool 8081).
+// Si une 2e instance est lancée, on quitte et on ramène la fenêtre existante.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}
+
 app.whenReady().then(() => {
-  detectGpu();
+  detectGpuAsync();
   createWindow();
 
   // Autorise le micro
@@ -112,10 +227,18 @@ app.whenReady().then(() => {
     callback(permission === 'media');
   });
 
-  // Raccourcis clavier globaux
-  globalShortcut.register('CommandOrControl+Shift+M', () => { if (win) win.webContents.send('shortcut', 'toggle-mic'); });
-  globalShortcut.register('CommandOrControl+Shift+C', () => { if (win) win.webContents.send('shortcut', 'copy'); });
-  globalShortcut.register('CommandOrControl+Shift+E', () => { if (win) win.webContents.send('shortcut', 'clear'); });
+  // Raccourcis clavier globaux. register() peut échouer si une autre app
+  // (Discord, OBS...) a déjà pris le raccourci. On logge l'échec en console
+  // pour diagnostic, sans alerter l'utilisateur (ce n'est pas bloquant).
+  const raccourcis = [
+    { accel: 'CommandOrControl+Shift+M', action: 'toggle-mic' },
+    { accel: 'CommandOrControl+Shift+C', action: 'copy' },
+    { accel: 'CommandOrControl+Shift+E', action: 'clear' }
+  ];
+  for (const r of raccourcis) {
+    const ok = globalShortcut.register(r.accel, () => { if (win) win.webContents.send('shortcut', r.action); });
+    if (!ok) console.log('Raccourci non enregistré (déjà pris par une autre app) : ' + r.accel);
+  }
 
   // Vérification auto de MAJ au lancement (si activé) → auto-update silencieux
   if (config.checkUpdatesOnLaunch) {
@@ -127,7 +250,8 @@ app.whenReady().then(() => {
 // Si ça échoue (réseau, quota), on continue sur la version actuelle. Point.
 async function checkAndAutoUpdate(silent) {
   const repo = config.updateRepo;
-  if (!repo || repo.startsWith('VOTRE_NOM_GITHUB')) return;
+  // Garde-fou : repo doit être au format "owner/name" (sinon on n'interroge pas l'API).
+  if (!repo || !repo.includes('/')) return;
   try {
     const data = await httpsGetJson('https://api.github.com/repos/' + repo + '/releases/latest');
     const tag = (data.tag_name || 'main');           // ex: "v1.2.1" (garde le "v")
@@ -140,7 +264,12 @@ async function checkAndAutoUpdate(silent) {
   } catch (e) { /* échec réseau/quota → on continue sur la version actuelle */ }
 }
 
-app.on('will-quit', () => { globalShortcut.unregisterAll(); });
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  // Tue le serveur LanguageTool sinon java.exe reste zombie après fermeture
+  // (sur Windows, fermer Electron ne propage pas le signal aux processus enfants).
+  if (ltProcess) { try { ltProcess.kill(); } catch (e) {} }
+});
 
 // ==========================================
 // IPC DE BASE
@@ -170,6 +299,72 @@ ipcMain.handle('config-set', (_e, partial) => {
 
 ipcMain.handle('get-gpu', () => gpuName);
 
+// Force la redétection du GPU (bouton "Redétecter" dans ⚙️). Retourne une
+// Promise qui résout quand la détection est faite (avec le nouveau nom).
+ipcMain.handle('redetect-gpu', () => {
+  return new Promise((resolve) => {
+    gpuName = 'Inconnue';
+    detectGpuAsync(true);
+    // detectGpuAsync est async (exec) ; on sonde gpuName jusqu'à ce qu'il change
+    let tries = 0;
+    const check = () => {
+      if (gpuName !== 'Inconnue' || tries > 20) resolve(gpuName);
+      else { tries++; setTimeout(check, 250); }
+    };
+    check();
+  });
+});
+
+// ==========================================
+// TRANSCRIPTION WHISPER (Option A — sécurité)
+// ==========================================
+// Le renderer n'a PLUS accès à child_process (faille RCE potentielle C7 fermée).
+// Il demande la transcription via IPC ; main.js lance main.exe et renvoie le texte.
+// Le renderer garde le diagnostic (il a les traductions pour les messages d'erreur).
+ipcMain.handle('transcribe', async (_event, { wavPath, modelPath, lang, translate }) => {
+  const whisperDir = path.join(__dirname, 'Whisper');
+  const exePath = path.join(whisperDir, 'main.exe');
+  const { spawn } = require('child_process');
+  // -l auto = détection auto de la langue source. -tr = traduire vers l'anglais.
+  const args = ['-m', modelPath, '-l', lang, '-otxt', '-nc', '-nt', '-mc', '0'];
+  if (translate) args.push('-tr');
+  args.push(wavPath);
+
+  return new Promise((resolve) => {
+    const child = spawn(exePath, args, { cwd: whisperDir, windowsHide: true });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => { stdout += d.toString(); });
+    child.stderr.on('data', d => { stderr += d.toString(); });
+    let done = false;
+    // Timeout 60 s (main.exe qui hang, GPU figé, etc.)
+    const timer = setTimeout(() => {
+      if (done) return; done = true;
+      try { child.kill(); } catch (e) {}
+      resolve({ error: 'Timeout 60s' });
+    }, 60000);
+    child.on('error', (err) => {
+      if (done) return; done = true; clearTimeout(timer);
+      resolve({ error: 'main.exe : ' + err.message });
+    });
+    child.on('close', (code) => {
+      if (done) return; done = true; clearTimeout(timer);
+      // Whisper crée un .txt SANS l'extension .wav : dictee.wav -> dictee.txt
+      const txtPath = wavPath.replace(/\.wav$/i, '.txt');
+      try {
+        const text = fs.readFileSync(txtPath, 'utf8').trim();
+        resolve({ text });
+      } catch (e) {
+        // Le .txt n'existe pas → main.exe a planté. On diagnostique la cause
+        // et on renvoie les infos brutes au renderer (qui a les traductions).
+        const sortie = (stdout + '\n' + stderr);
+        // Détection d'un GPU incompatible (DirectX < 11, VM sans GPU, etc.)
+        const causeGPU = /(direct3d|d3d11|feature level|no compatible.*gpu|gpu.*not.*found|failed to create.*device|cannot create.*device|no suitable|d3d.*init|adapter.*not|no.*hardware.*acceler)/i.test(sortie);
+        resolve({ error: 'code ' + code, causeGPU, diag: sortie.slice(-300) });
+      }
+    });
+  });
+});
+
 // Langue de l'interface
 ipcMain.handle('get-langue', () => interfaceLang);
 ipcMain.handle('set-langue', (_e, code) => {
@@ -189,6 +384,10 @@ ipcMain.on('relaunch-app', () => {
 // ==========================================
 function httpsGetJson(url) {
   return new Promise((resolve, reject) => {
+    // VAUBAN : valide le host avant toute connexion.
+    let host;
+    try { host = new URL(url).hostname; } catch (e) { reject(new Error('URL invalide')); return; }
+    if (!isHostAllowed(host)) { reject(new Error('Vauban : host non autorisé ' + host)); return; }
     const req = https.get(url, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 10000 }, (res) => {
       // Suit les redirections (301/302) courantes sur les APIs
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -208,7 +407,8 @@ function httpsGetJson(url) {
 // Vérifie la dernière version de l'APP sur GitHub
 async function checkAppUpdate(silent) {
   const repo = config.updateRepo;
-  if (!repo || repo.startsWith('VOTRE_NOM_GITHUB')) {
+  // Garde-fou : repo doit être au format "owner/name" (sinon on n'interroge pas l'API).
+  if (!repo || !repo.includes('/')) {
     if (!silent && win) win.webContents.send('update-result', { type: 'app', error: 'Dépôt de mise à jour non configuré (voir config.json).' });
     return;
   }
@@ -257,34 +457,68 @@ function compareVersions(a, b) {
 // Télécharge un fichier texte (raw) vers destPath. Résout avec true/false.
 function httpsDownloadFile(url, destPath) {
   return new Promise((resolve) => {
+    let resolved = false;
+    const finish = (ok) => {
+      if (resolved) return;
+      resolved = true;
+      try { file.close(); } catch (e) {}  // peut throw si flux déjà fermé
+      try { if (!ok) fs.unlinkSync(destPath); } catch (e) {}
+      resolve(ok);
+    };
     const file = fs.createWriteStream(destPath);
     const doRequest = (u) => {
-      https.get(u, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 30000 }, (res) => {
+      // VAUBAN : valide le host AVANT chaque connexion (y compris redirections).
+      let host;
+      try { host = new URL(u).hostname; } catch (e) { finish(false); return; }
+      if (!isHostAllowed(host)) { finish(false); return; }
+      const req = https.get(u, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 30000 }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
           doRequest(res.headers.location);
           return;
         }
         if (res.statusCode !== 200) {
-          file.close(); try { fs.unlinkSync(destPath); } catch (e) {}
-          resolve(false);
+          finish(false);
           return;
         }
         res.pipe(file);
-        file.on('finish', () => { file.close(() => resolve(true)); });
-      }).on('error', () => {
-        file.close(); try { fs.unlinkSync(destPath); } catch (e) {}
-        resolve(false);
+        file.on('finish', () => { finish(true); });
       });
+      req.on('error', () => finish(false));
+      req.on('timeout', () => { req.destroy(new Error('timeout')); });  // évite le blocage infini
     };
     doRequest(url);
   });
 }
 
 // Exécute npm install de façon silencieuse (pour rafraîchir les dépendances)
+// m15 : windowsHide:true → pas de fenêtre cmd qui apparaît pendant une MAJ.
 function runNpmInstall(callback) {
   const { exec } = require('child_process');
   exec('npm install', { cwd: __dirname, windowsHide: true }, (err) => callback(!err));
+}
+
+// Redémarrage SÛR : attend que le renderer ne soit plus occupé (enregistrement/transcription)
+// avant de relancer. Empêche de tuer une dictée en plein milieu.
+// Garde-fou C8 : timeout max de 10 min. Au-delà, on force le relaunch (sinon une
+// dictée laissée indéfiniment en cours bloquait la MAJ pour toujours).
+const MAX_RELUNCH_WAIT_MS = 10 * 60 * 1000;
+let isRestarting = false;  // anti double-redémarrage
+function safeRelaunch() {
+  if (isRestarting) return;          // un redémarrage est déjà programmé
+  isRestarting = true;
+  const startedAt = Date.now();
+  const tryRelaunch = () => {
+    const waitedTooLong = (Date.now() - startedAt) > MAX_RELUNCH_WAIT_MS;
+    if (isBusy && !waitedTooLong) {
+      // Le renderer travaille encore : on réessaie dans 2 s
+      setTimeout(tryRelaunch, 2000);
+    } else {
+      app.relaunch();
+      app.exit(0);
+    }
+  };
+  tryRelaunch();
 }
 
 // Effectue la mise à jour complète de l'app depuis GitHub
@@ -295,7 +529,16 @@ async function performAppUpdate(silent, ref) {
   if (!ref) ref = 'main'; // fallback si pas de tag passé
 
   // Liste des fichiers de code à mettre à jour (les données utilisateur ne sont JAMAIS touchées)
+  // CODE : fichiers dans PROGRAM/ sur le dépôt.
   const FILES = ['main.js', 'index.html', 'langues.js', 'package.json', 'package-lock.json'];
+  // m16 : MANUEL.txt et README.md sont aussi mis à jour (sinon les utilisateurs
+  // existants gardaient un manuel périmé après une MAJ).
+  const DOC_FILES = ['MANUEL.txt', 'README.md'];
+  // M1 : on ne télécharge QUE les 3 .ps1 réellement copiés dans le dossier installé
+  // (ceux utilisés par DESINSTALLER.bat). Les 5 autres ne servent qu'à l'install
+  // initiale (INSTALLATEUR.bat) et ne sont pas dans le dossier installé → inutiles
+  // de les télécharger ici (gaspillage bande passante + echec si absents du tag).
+  const PS1_RUNTIME = ['desinstall_confirm.ps1', 'remove_shortcut.ps1', 'remove_node_path.ps1'];
 
   try {
     if (win) win.webContents.send('update-result', { type: 'app', phase: 'downloading', silent });
@@ -308,16 +551,52 @@ async function performAppUpdate(silent, ref) {
     // ref = tag de la release (ex: "v1.2.1") → on télécharge la VRAIE version publiée
     // Les fichiers sont dans PROGRAM/ sur le dépôt GitHub (structure épurée)
     const baseRaw = 'https://raw.githubusercontent.com/' + repo + '/' + ref + '/PROGRAM/';
+    // Racine du dépôt (pour DESINSTALLER.bat, MANUEL.txt, README.md)
+    const baseRoot = 'https://raw.githubusercontent.com/' + repo + '/' + ref + '/';
+
     for (const f of FILES) {
+      const ok = await httpsDownloadFile(baseRaw + f, path.join(tmpDir, f));
+      if (!ok) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
+        // C4 : message clair si la structure du dépôt a changé (ex: PROGRAM/ absent du tag)
+        throw new Error('Téléchargement échoué : ' + f + ' (structure du dépôt ou tag "' + ref + '" invalide ?)');
+      }
+    }
+    // Télécharge les 3 .ps1 runtime (M1 : seulement les utiles)
+    for (const f of PS1_RUNTIME) {
       const ok = await httpsDownloadFile(baseRaw + f, path.join(tmpDir, f));
       if (!ok) {
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
         throw new Error('Téléchargement échoué : ' + f);
       }
     }
+    // Télécharge DESINSTALLER.bat + docs (à la racine du dépôt)
+    {
+      const ok = await httpsDownloadFile(baseRoot + 'DESINSTALLER.bat', path.join(tmpDir, 'DESINSTALLER.bat'));
+      if (!ok) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
+        throw new Error('Téléchargement échoué : DESINSTALLER.bat');
+      }
+    }
+    // m16 : docs (optionnel — si elles n'existent pas sur le tag, on ignore sans échouer)
+    for (const f of DOC_FILES) {
+      await httpsDownloadFile(baseRoot + f, path.join(tmpDir, f));
+    }
 
-    // 4) Tous les fichiers sont téléchargés → remplacement atomique
+    // 4) Tous les fichiers sont téléchargés → sauvegarde de l'ancienne version (C3)
+    //    PUIS remplacement. La sauvegarde permet un rollback manuel si la nouvelle
+    //    version est cassée. Contenu : les fichiers de code + DESINSTALLER.bat.
     if (win) win.webContents.send('update-result', { type: 'app', phase: 'installing', silent });
+
+    const backupDir = path.join(__dirname, '__update_backup');
+    try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch (e) {}
+    try { fs.mkdirSync(backupDir, { recursive: true }); } catch (e) {}
+    const backupAll = [...FILES, ...PS1_RUNTIME, 'DESINSTALLER.bat'];
+    for (const f of backupAll) {
+      try { fs.copyFileSync(path.join(__dirname, f), path.join(backupDir, f)); } catch (e) {}
+    }
+    // Garde une trace de la version remplacée (utile pour diagnostiquer un rollback)
+    try { fs.writeFileSync(path.join(backupDir, 'REPLACED_FROM_VERSION.txt'), config.appVersion, 'utf8'); } catch (e) {}
 
     // Vérifie si package.json change (pour savoir si npm install est nécessaire)
     let needNpm = false;
@@ -327,23 +606,32 @@ async function performAppUpdate(silent, ref) {
       needNpm = (oldPkg !== newPkg);
     } catch (e) { needNpm = true; }
 
-    // Remplace chaque fichier
+    // Remplace chaque fichier de code
     for (const f of FILES) {
       fs.copyFileSync(path.join(tmpDir, f), path.join(__dirname, f));
     }
+    // Remplace les 3 .ps1 runtime
+    for (const f of PS1_RUNTIME) {
+      fs.copyFileSync(path.join(tmpDir, f), path.join(__dirname, f));
+    }
+    // Remplace DESINSTALLER.bat + docs (à la racine du dossier installé)
+    fs.copyFileSync(path.join(tmpDir, 'DESINSTALLER.bat'), path.join(__dirname, 'DESINSTALLER.bat'));
+    for (const f of DOC_FILES) {
+      try { if (fs.existsSync(path.join(tmpDir, f))) fs.copyFileSync(path.join(tmpDir, f), path.join(__dirname, f)); } catch (e) {}
+    }
 
-    // 5) Nettoie le dossier temporaire
+    // 5) Nettoie le dossier temporaire (on GARDE __update_backup pour rollback)
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
 
-    // 6) npm install si besoin (puis relance)
+    // 6) npm install si besoin (puis relance sûre)
     if (needNpm) {
       runNpmInstall(() => {
         if (win) win.webContents.send('update-result', { type: 'app', phase: 'done', silent });
-        setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+        setTimeout(() => { safeRelaunch(); }, 1500);
       });
     } else {
       if (win) win.webContents.send('update-result', { type: 'app', phase: 'done', silent });
-      setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+      setTimeout(() => { safeRelaunch(); }, 1500);
     }
   } catch (e) {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (err) {}
@@ -390,6 +678,7 @@ ipcMain.handle('list-models', () => {
 // ==========================================
 let downloadQueue = [];       // [{ modelId, event }]
 let activeDownloadId = null;  // id du modèle en cours de téléchargement
+let modelsInstalledCount = 0; // nombre de modèles réussis dans la session courante de la file
 
 // Envoie à l'UI l'état courant de la file (modèle actif + en attente)
 function notifyQueueStatus() {
@@ -416,17 +705,20 @@ function processDownloadQueue() {
 
   // Suit les redirections HuggingFace manuellement
   let total = 0, received = 0;
+  let downloadFinished = false;  // anti double-fin
   const file = fs.createWriteStream(dest);
 
   const finishDownload = (ok, errMsg) => {
+    if (downloadFinished) return;
+    downloadFinished = true;
     activeDownloadId = null;
-    if (ok) {
-      event.reply('download-done', { modelId, ok: true });
-    }
+    // Nettoie le fichier partiel si échec (évite qu'il soit détecté comme "installé")
+    if (!ok) { try { fs.unlinkSync(dest); } catch (e) {} }
+    else { event.reply('download-done', { modelId, ok: true }); modelsInstalledCount++; }
     notifyQueueStatus();
     if (downloadQueue.length === 0) {
-      // File vide : UN SEUL redémarrage final pour prendre en compte le(s) modèle(s)
-      setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+      // File vide : UN SEUL redémarrage final, mais SEULEMENT si au moins 1 modèle a réussi
+      if (modelsInstalledCount > 0) setTimeout(() => { safeRelaunch(); }, 1500);
     } else {
       // Encore des modèles en attente : on lance le suivant
       processDownloadQueue();
@@ -434,16 +726,20 @@ function processDownloadQueue() {
   };
 
   const doRequest = (url) => {
-    https.get(url, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 30000 }, (res) => {
+    // VAUBAN : valide le host AVANT chaque connexion (y compris redirections).
+    let host;
+    try { host = new URL(url).hostname; } catch (e) { event.reply('download-progress', { modelId, error: 'URL invalide' }); finishDownload(false); return; }
+    if (!isHostAllowed(host)) { event.reply('download-progress', { modelId, error: 'Vauban : host non autorisé ' + host }); finishDownload(false); return; }
+    const req = https.get(url, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 120000 }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
         doRequest(res.headers.location);
         return;
       }
       if (res.statusCode !== 200) {
-        file.close(); try { fs.unlinkSync(dest); } catch (e) {}
+        try { file.close(); } catch (e) {}
         event.reply('download-progress', { modelId, error: 'HTTP ' + res.statusCode });
-        finishDownload(false);
+        finishDownload(false);  // nettoie dest lui-même
         return;
       }
       total = parseInt(res.headers['content-length'] || '0', 10);
@@ -453,11 +749,13 @@ function processDownloadQueue() {
       });
       res.pipe(file);
       file.on('finish', () => { file.close(() => finishDownload(true)); });
-    }).on('error', err => {
-      file.close(); try { fs.unlinkSync(dest); } catch (e) {}
-      event.reply('download-progress', { modelId, error: err.message });
-      finishDownload(false);
     });
+    req.on('error', err => {
+      try { file.close(); } catch (e) {}
+      event.reply('download-progress', { modelId, error: err.message });
+      finishDownload(false);  // nettoie dest lui-même
+    });
+    req.on('timeout', () => { req.destroy(new Error('timeout de téléchargement')); });  // évite blocage infini
   };
   doRequest(model.url);
 }
@@ -468,6 +766,8 @@ ipcMain.on('download-model', (event, modelId) => {
   if (!model) { event.reply('download-progress', { error: 'Modèle inconnu' }); return; }
   // Évite les doublons dans la file
   if (activeDownloadId === modelId || downloadQueue.some(item => item.modelId === modelId)) return;
+  // Si la file était vide, on démarre un nouveau cycle → reset le compteur de succès
+  if (downloadQueue.length === 0 && activeDownloadId === null) modelsInstalledCount = 0;
   downloadQueue.push({ modelId, event });
   notifyQueueStatus();
   processDownloadQueue();
@@ -484,67 +784,80 @@ ipcMain.on('delete-model', (event, fileName) => {
 // Télécharge la dernière version de cli.zip depuis Const-me/Whisper,
 // la décompresse dans Whisper/, supprime le zip temporaire, puis redémarre.
 // ==========================================
+let installOngoing = false;  // anti double-clic (install-cli + install-correcteur)
 ipcMain.on('install-cli', async (event) => {
-  const whisperDir = path.join(__dirname, 'Whisper');
-  try { fs.mkdirSync(whisperDir, { recursive: true }); } catch (e) {}
-
-  // 1) Récupère l'URL du cli.zip depuis l'API GitHub
-  let cliUrl = null;
+  if (installOngoing) { event.reply('install-cli-progress', { error: 'Une installation est déjà en cours, patientez.' }); return; }
+  installOngoing = true;
   try {
-    const data = await httpsGetJson('https://api.github.com/repos/Const-me/Whisper/releases/latest');
-    if (data && data.assets) {
-      const asset = data.assets.find(a => /cli\.zip$/i.test(a.name) || /cli\.zip$/i.test(a.browser_download_url));
-      if (asset) cliUrl = asset.browser_download_url;
+    const whisperDir = path.join(__dirname, 'Whisper');
+    try { fs.mkdirSync(whisperDir, { recursive: true }); } catch (e) {}
+
+    // 1) Récupère l'URL du cli.zip depuis l'API GitHub
+    let cliUrl = null;
+    try {
+      const data = await httpsGetJson('https://api.github.com/repos/Const-me/Whisper/releases/latest');
+      if (data && data.assets) {
+        const asset = data.assets.find(a => /cli\.zip$/i.test(a.name) || /cli\.zip$/i.test(a.browser_download_url));
+        if (asset) cliUrl = asset.browser_download_url;
+      }
+    } catch (e) {}
+    if (!cliUrl) { event.reply('install-cli-progress', { error: 'URL cli.zip introuvable' }); return; }
+
+    // 2) Télécharge cli.zip avec progression
+    const zipPath = path.join(whisperDir, 'cli.zip');
+    let total = 0, received = 0;
+    const file = fs.createWriteStream(zipPath);
+
+    await new Promise((resolve, reject) => {
+      const doRequest = (url) => {
+        // VAUBAN : valide le host AVANT chaque connexion (y compris redirections).
+        let host;
+        try { host = new URL(url).hostname; } catch (e) { reject(new Error('URL invalide')); return; }
+        if (!isHostAllowed(host)) { reject(new Error('Vauban : host non autorisé ' + host)); return; }
+        https.get(url, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 120000 }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume(); doRequest(res.headers.location); return;
+          }
+          if (res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return; }
+          total = parseInt(res.headers['content-length'] || '0', 10);
+          res.on('data', chunk => {
+            received += chunk.length;
+            if (total > 0) event.reply('install-cli-progress', { percent: Math.round(received / total * 100) });
+          });
+          res.pipe(file);
+          file.on('finish', () => { file.close(resolve); });
+        }).on('error', reject);
+      };
+      doRequest(cliUrl);
+    });
+
+    // 3) Décompression via extract-zip (module npm, robuste sur tous les Windows
+    // y compris Atlas OS où Expand-Archive PowerShell peut être fragile/lent).
+    // NOTE : extract-zip exige un chemin "dir" au format POSIX (slashs /) sur
+    // Windows, sinon il échoue. path.join() produit des "\" sur Windows → on convertit.
+    event.reply('install-cli-progress', { phase: 'extract' });
+    try {
+      await require('extract-zip')(zipPath, { dir: whisperDir.replace(/\\/g, '/') });
+    } catch (e) {
+      event.reply('install-cli-progress', { error: 'Échec décompression : ' + e.message });
+      return;
     }
-  } catch (e) {}
-  if (!cliUrl) { event.reply('install-cli-progress', { error: 'URL cli.zip introuvable' }); return; }
 
-  // 2) Télécharge cli.zip avec progression
-  const zipPath = path.join(whisperDir, 'cli.zip');
-  let total = 0, received = 0;
-  const file = fs.createWriteStream(zipPath);
+    // 4) Supprime le zip temporaire
+    try { fs.unlinkSync(zipPath); } catch (e) {}
 
-  await new Promise((resolve, reject) => {
-    const doRequest = (url) => {
-      https.get(url, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 30000 }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume(); doRequest(res.headers.location); return;
-        }
-        if (res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return; }
-        total = parseInt(res.headers['content-length'] || '0', 10);
-        res.on('data', chunk => {
-          received += chunk.length;
-          if (total > 0) event.reply('install-cli-progress', { percent: Math.round(received / total * 100) });
-        });
-        res.pipe(file);
-        file.on('finish', () => { file.close(resolve); });
-      }).on('error', reject);
-    };
-    doRequest(cliUrl);
-  });
+    // 5) Vérifie que main.exe est bien là
+    if (!fs.existsSync(path.join(whisperDir, 'main.exe'))) {
+      event.reply('install-cli-progress', { error: 'main.exe absent après décompression' });
+      return;
+    }
 
-  // 3) Décompression via PowerShell (Expand-Archive, dispo sur Win10/11)
-  event.reply('install-cli-progress', { phase: 'extract' });
-  const { execSync } = require('child_process');
-  try {
-    execSync(`powershell -NoProfile -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${whisperDir}' -Force"`, { windowsHide: true });
-  } catch (e) {
-    event.reply('install-cli-progress', { error: 'Échec décompression : ' + e.message });
-    return;
+    // 6) Redémarre l'app
+    event.reply('install-cli-done', { ok: true });
+    setTimeout(() => { safeRelaunch(); }, 1200);
+  } finally {
+    installOngoing = false;
   }
-
-  // 4) Supprime le zip temporaire
-  try { fs.unlinkSync(zipPath); } catch (e) {}
-
-  // 5) Vérifie que main.exe est bien là
-  if (!fs.existsSync(path.join(whisperDir, 'main.exe'))) {
-    event.reply('install-cli-progress', { error: 'main.exe absent après décompression' });
-    return;
-  }
-
-  // 6) Redémarre l'app
-  event.reply('install-cli-done', { ok: true });
-  setTimeout(() => { app.relaunch(); app.exit(0); }, 1200);
 });
 
 // ==========================================
@@ -610,10 +923,16 @@ ipcMain.handle('dico-set', (_e, listeMots) => {
 // Universel : sert à Jarvis (ponpon 76) mais aussi à tout utilisateur avec
 // son propre n8n (Discord, Notion, LLM, etc.). 100% configurable.
 // ==========================================
-// Parse une URL http/https et renvoie { module, host, port, path }
+// Parse une URL http/https et renvoie { module, host, port, path }.
+// VAUBAN (webhook) : seuls http: et https: sont autorisés (pas file:, ftp:, etc.).
+// L'host est accepté quel qu'il soit (l'utilisateur configure son propre n8n,
+// potentiellement auto-hébergé sur un domaine perso). Mais on refuse les
+// schémas dangereux qui pourraient exfiltrer des fichiers locaux (file://).
 function parseWebhookUrl(url) {
   try {
     const u = new URL(url);
+    // Refuse tout schéma qui n'est pas http/https (file://, ftp://, etc.)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
     return {
       module: u.protocol === 'https:' ? https : http,
       host: u.hostname,
@@ -659,7 +978,13 @@ ipcMain.handle('webhook-test', async (_e, { url, token }) => {
   return await envoyerWebhook(url, token, payload);
 });
 
-// Vérifie si LanguageTool est installé (jar présent ET java présent)
+// Vérifie si LanguageTool est installé (jar présent ET java présent ET fonctionnel).
+// M13 : avant on testait seulement l'existence du fichier java.exe. Si le zip Java
+// avait été partiellement extrait, java.exe existait mais plantait au lancement →
+// le serveur LT ne démarrait jamais et l'utilisateur attendait 15 s pour rien.
+// Maintenant on lance "java -version" pour valider que l'exécutable tourne vraiment.
+// Comme c'est synchrone et potentiellement lent (~1 s), on garde un cache rapide
+// sur l'existence du fichier, et la vérification d'exécution est différée.
 function isLanguageToolInstalled() {
   try {
     const jarOk = fs.existsSync(path.join(LT_LT_DIR, 'languagetool-server.jar'));
@@ -669,6 +994,19 @@ function isLanguageToolInstalled() {
   } catch (e) {
     return { installed: false, error: e.message };
   }
+}
+
+// Variante asynchrone : valide que java.exe tourne vraiment (java -version).
+// Utilisée avant startLtServer pour un diagnostic clair en cas de Java cassé.
+function checkJavaWorks(javaExe) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(javaExe)) { resolve(false); return; }
+    const { execFile } = require('child_process');
+    execFile(javaExe, ['-version'], { windowsHide: true, timeout: 5000 }, (err, stdout, stderr) => {
+      // java -version écrit sur stderr (comportement normal de la JVM)
+      resolve(!err || /version/i.test(stderr + stdout));
+    });
+  });
 }
 
 // Vérifie si le serveur LT répond sur localhost:8081 (GET /v2/languages)
@@ -690,6 +1028,10 @@ async function startLtServer() {
   const { installed, javaExe } = isLanguageToolInstalled();
   if (!installed) return false;
   if (await checkLtServer()) return true; // déjà lancé par une session précédente
+  // M13 : valide que Java tourne vraiment avant de tenter le serveur (sinon on
+  // attend 15 s pour rien si java.exe est cassé).
+  const javaOk = await checkJavaWorks(javaExe);
+  if (!javaOk) return false;
   const { spawn } = require('child_process');
   const jar = path.join(LT_LT_DIR, 'languagetool-server.jar');
   ltProcess = spawn(javaExe, ['-cp', jar, 'org.languagetool.server.HTTPServer', '--port', String(LT_PORT)], {
@@ -728,7 +1070,11 @@ function downloadWithProgress(url, destPath, progressCallback) {
     const file = fs.createWriteStream(destPath);
     let total = 0, received = 0;
     const doRequest = (u) => {
-      https.get(u, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 60000 }, (res) => {
+      // VAUBAN : valide le host AVANT chaque connexion (y compris redirections).
+      let host;
+      try { host = new URL(u).hostname; } catch (e) { reject(new Error('URL invalide')); return; }
+      if (!isHostAllowed(host)) { reject(new Error('Vauban : host non autorisé ' + host)); return; }
+      const req = https.get(u, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 180000 }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume(); doRequest(res.headers.location); return;
         }
@@ -740,17 +1086,24 @@ function downloadWithProgress(url, destPath, progressCallback) {
         });
         res.pipe(file);
         file.on('finish', () => file.close(() => resolve()));
-      }).on('error', err => {
+      });
+      req.on('error', err => {
         file.close(); try { fs.unlinkSync(destPath); } catch (e) {} reject(err);
       });
+      req.on('timeout', () => { req.destroy(new Error('timeout')); });  // évite blocage infini
     };
     doRequest(url);
   });
 }
 
 ipcMain.on('install-correcteur', async (event) => {
+  // Anti double-clic : on partage le même drapeau qu'install-cli, sinon on
+  // pouvait lancer install-cli ET install-correcteur en parallèle (double spawn
+  // Java, conflits disque).
+  if (installOngoing) { event.reply('install-correcteur-progress', { error: 'Une installation est déjà en cours, patientez.' }); return; }
+  installOngoing = true;
+  try {
   try { fs.mkdirSync(LT_DIR, { recursive: true }); } catch (e) {}
-  const { execSync } = require('child_process');
 
   // ---- 1) JAVA TEMURIN (JDK portable) ----
   // On télécharge le zip Temurin 21 (Windows x64) depuis le site officiel Adoptium.
@@ -764,10 +1117,12 @@ ipcMain.on('install-correcteur', async (event) => {
         event.reply('install-correcteur-progress', { phase: 'java-download', percent: combinedPercent(recv, tot, 1) });
       });
       // Extraction : le zip contient un dossier racine "jdk-21..." qu'on aplatit
+      // M10 : extract-zip (npm) au lieu d'Expand-Archive PowerShell (fragile sur Atlas OS).
+      // R1 : extract-zip exige des chemins POSIX (slashs /) → on convertit.
       event.reply('install-correcteur-progress', { phase: 'java-extract' });
       const javaExtractTmp = path.join(LT_DIR, 'java_tmp');
       try { fs.rmSync(javaExtractTmp, { recursive: true, force: true }); } catch (e) {}
-      execSync(`powershell -NoProfile -Command "Expand-Archive -LiteralPath '${javaZip}' -DestinationPath '${javaExtractTmp}' -Force"`, { windowsHide: true });
+      await require('extract-zip')(javaZip, { dir: javaExtractTmp.replace(/\\/g, '/') });
       // Le zip Temurin contient un seul dossier racine (ex: jdk-21.0.x+x)
       const inner = fs.readdirSync(javaExtractTmp).find(d => fs.statSync(path.join(javaExtractTmp, d)).isDirectory());
       if (!inner) throw new Error('Structure zip Java inattendue');
@@ -796,7 +1151,9 @@ ipcMain.on('install-correcteur', async (event) => {
       event.reply('install-correcteur-progress', { phase: 'lt-extract' });
       const ltExtractTmp = path.join(LT_DIR, 'lt_tmp');
       try { fs.rmSync(ltExtractTmp, { recursive: true, force: true }); } catch (e) {}
-      execSync(`powershell -NoProfile -Command "Expand-Archive -LiteralPath '${ltZip}' -DestinationPath '${ltExtractTmp}' -Force"`, { windowsHide: true });
+      // M10 : extract-zip (npm) au lieu d'Expand-Archive PowerShell.
+      // R1 : chemins POSIX requis par extract-zip.
+      await require('extract-zip')(ltZip, { dir: ltExtractTmp.replace(/\\/g, '/') });
       // Le zip stable crée un dossier racine "LanguageTool-X.x" (version numérotée)
       const inner = fs.readdirSync(ltExtractTmp).find(d => fs.statSync(path.join(ltExtractTmp, d)).isDirectory());
       if (!inner) throw new Error('Structure zip LanguageTool inattendue');
@@ -817,11 +1174,15 @@ ipcMain.on('install-correcteur', async (event) => {
   event.reply('install-correcteur-progress', { phase: 'server-test' });
   const started = await startLtServer();
   event.reply('install-correcteur-done', { ok: started, port: LT_PORT });
+  } finally {
+    installOngoing = false;  // libère le drapeau partagé avec install-cli
+  }
 });
 
 // Utilitaire : pourcentage combiné pour la barre de progression globale.
 // Phase 1 (Java, plus gros) ≈ 0-55%, Phase 2 (LanguageTool) ≈ 55-100%.
 function combinedPercent(recv, tot, phase) {
+  if (!tot) return 5;  // évite NaN/Infinity si le serveur n'envoie pas content-length
   if (phase === 1) return Math.round(recv / tot * 55);
   return Math.round(55 + (recv / tot) * 45);
 }

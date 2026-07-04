@@ -10,7 +10,10 @@ node_modules/
 # === Moteur et modèles Whisper (trop gros) ===
 Whisper/
 **/Whisper/
-*.bin
+# Modèles Whisper uniquement (ggml-*.bin). Pas de *.bin brut qui ignorerait
+# par erreur un futur fichier .bin légitime ajouté au dépôt.
+ggml-*.bin
+**/ggml-*.bin
 
 # === Correcteur d'orthographe ===
 Correcteur/
@@ -23,7 +26,8 @@ temp/
 **/temp/
 dictionnaire_perso.txt
 langue.txt
-last_update_check.txt
+__update_backup/
+**/__update_backup/
 
 # === Config locale ===
 config.json
