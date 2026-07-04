@@ -12,7 +12,6 @@ const http = require('http');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LANGUE_PATH = path.join(__dirname, 'langue.txt');
-const UPDATE_CHECK_PATH = path.join(__dirname, 'last_update_check.txt');
 const DEFAULT_CONFIG = {
   appVersion: '1.2.0',
   updateRepo: 'ponpon76/mini-dictaphone',
@@ -124,33 +123,11 @@ app.whenReady().then(() => {
   }
 });
 
-// Limiteur anti-boucle : 3 vérifications max par heure (préserve le quota API GitHub).
-// Lit last_update_check.txt (liste de timestamps) et renvoie true si on peut vérifier.
-function canCheckUpdate() {
-  try {
-    const now = Date.now();
-    const uneHeure = 60 * 60 * 1000;
-    let timestamps = [];
-    if (fs.existsSync(UPDATE_CHECK_PATH)) {
-      timestamps = fs.readFileSync(UPDATE_CHECK_PATH, 'utf8')
-        .split('\n').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
-    }
-    // Garde uniquement les timestamps de la dernière heure
-    timestamps = timestamps.filter(t => (now - t) < uneHeure);
-    if (timestamps.length >= 3) return false;  // quota de 3/heure atteint
-    // Enregistre cette vérification
-    timestamps.push(now);
-    fs.writeFileSync(UPDATE_CHECK_PATH, timestamps.join('\n'), 'utf8');
-    return true;
-  } catch (e) { return true; /* en cas d'erreur, on laisse passer */ }
-}
-
 // Vérifie la version au lancement ; si une MAJ plus récente existe, l'applique silencieusement.
+// Si ça échoue (réseau, quota), on continue sur la version actuelle. Point.
 async function checkAndAutoUpdate(silent) {
   const repo = config.updateRepo;
   if (!repo || repo.startsWith('VOTRE_NOM_GITHUB')) return;
-  // Anti-boucle : 3 vérifs max par heure
-  if (!canCheckUpdate()) return;
   try {
     const data = await httpsGetJson('https://api.github.com/repos/' + repo + '/releases/latest');
     const tag = (data.tag_name || 'main');           // ex: "v1.2.1" (garde le "v")
@@ -160,7 +137,7 @@ async function checkAndAutoUpdate(silent) {
       // On passe le TAG (pas "main") pour télécharger la vraie version de la release
       performAppUpdate(silent, tag);
     }
-  } catch (e) { /* échec réseau silencieux au démarrage */ }
+  } catch (e) { /* échec réseau/quota → on continue sur la version actuelle */ }
 }
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
