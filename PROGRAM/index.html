@@ -387,14 +387,27 @@
     }
 
     function clearNote() {
-      if (noteCourante && fs.existsSync(noteCourante)) {
-        try { fs.unlinkSync(noteCourante); } catch (e) {}
+      const output = document.getElementById('text-output');
+      // CLEAR intelligent : si du texte est sélectionné, on n'efface QUE la sélection.
+      // Sinon, on efface toute la fenêtre (comportement habituel).
+      const start = output.selectionStart, end = output.selectionEnd;
+      if (end > start) {
+        const before = output.value.substring(0, start);
+        const after = output.value.substring(end);
+        output.value = before + after;
+        // Replace le curseur à l'endroit de la suppression
+        output.selectionStart = output.selectionEnd = start;
+        sauvegarderNoteCourante();
+        flash(T.selection_supprimee || T.ecran_efface);
+      } else {
+        // Pas de sélection : on efface toute la fenêtre (mais on GARDE l'archive)
+        // L'archive reste dans Sauvegardes/, accessible via le bouton dossier 📂
+        noteCourante = null;
+        historyIndex = -1;
+        output.value = '';
+        updateNavInfo();
+        flash(T.ecran_efface);
       }
-      noteCourante = null;
-      historyIndex = -1;
-      document.getElementById('text-output').value = '';
-      updateNavInfo();
-      flash(T.ecran_efface);
     }
 
     function openFolder() {
@@ -965,11 +978,10 @@
       flash(modeTraduction ? T.traduire_arme : T.traduire_desarme);
     }
 
-    // Bouton "📤 Envoyer" : arme/désarme l'envoi webhook n8n (auto après chaque dictée)
+    // Bouton "n8n" : arme/désarme l'envoi webhook n8n (auto après chaque dictée)
     function toggleModeWebhook() {
       if (!appConfig || !appConfig.webhookUrl) {
         flash(T.webhook_non_config);
-        openUpdatePanel(); // ouvre ⚙️ pour configurer l'URL
         return;
       }
       modeWebhook = !modeWebhook;
@@ -1181,6 +1193,12 @@
       }
     }
 
+    // ==========================================
+    // ÉTAT DE LA FILE DE TÉLÉCHARGEMENT (anti-double-clic + file visible)
+    // ==========================================
+    let downloadingIds = new Set();  // modèle en cours de téléchargement
+    let queueIds = new Set();        // modèle en file d'attente
+
     function renderModelsList(data) {
       const el = document.getElementById('models-list');
       if (!el) return;
@@ -1188,13 +1206,26 @@
         const fileName = 'ggml-' + m.id + '.bin';
         const installed = data.installed.includes(fileName);
         const active = currentModel === fileName;
+        const isDownloading = downloadingIds.has(m.id);
+        const isQueued = queueIds.has(m.id);
         const badge = active ? `<span class="badge-active">${T.actif}</span>` : (installed ? `<span class="badge-installed">${T.installe}</span>` : '');
         const star = m.recommended ? '⭐ ' : '';
+        // Bouton contextuel : désactivé (grisé) si téléchargement ou en file
+        let btn;
+        if (active) {
+          btn = `<button class="modal-btn secondary" disabled>${T.actif}</button>`;
+        } else if (installed) {
+          btn = `<button class="modal-btn secondary" onclick="deleteModel('${fileName}')">${T.supprimer}</button>`;
+        } else if (isDownloading) {
+          btn = `<button class="modal-btn secondary" disabled>⏬ ${T.telechargement_cours}</button>`;
+        } else if (isQueued) {
+          btn = `<button class="modal-btn secondary" disabled>⏳ ${T.en_file}</button>`;
+        } else {
+          btn = `<button class="modal-btn" onclick="downloadModel('${m.id}')">${T.telecharger}</button>`;
+        }
         return `<div class="modal-row">
           <div><b>${star}${m.name}</b> ${badge}<div class="meta">${m.size} • ${m.quality} • VRAM ${m.vram}</div><div class="progress-bar" id="prog-${m.id}" style="display:none"><div class="progress-fill" style="width:0%"></div></div></div>
-          ${active ? `<button class="modal-btn secondary" disabled>${T.actif}</button>` :
-            installed ? `<button class="modal-btn secondary" onclick="deleteModel('${fileName}')">${T.supprimer}</button>` :
-            `<button class="modal-btn" onclick="downloadModel('${m.id}')">${T.telecharger}</button>`}
+          ${btn}
         </div>`;
       }).join('');
     }
@@ -1238,12 +1269,28 @@
     ipcRenderer.on('update-result', (_e, r) => {
       if (r.type === 'app') {
         const dot = document.getElementById('update-dot');
+        // Phases de l'auto-update (téléchargement/installation en cours)
+        if (r.phase === 'downloading') {
+          updateResults.app = `<span style="color:#89b4fa">⏬ ${T.maj_telechargement}</span>`;
+          renderAllUpdates();
+          return;
+        }
+        if (r.phase === 'installing') {
+          updateResults.app = `<span style="color:#89b4fa">⚙️ ${T.maj_installation}</span>`;
+          renderAllUpdates();
+          return;
+        }
+        if (r.phase === 'done') {
+          updateResults.app = `<span style="color:#a6e3a1">✓ ${T.maj_redemarrage_auto}</span>`;
+          renderAllUpdates();
+          return;
+        }
         if (r.error) {
-          if (updateCheckActive) { updateResults.app = `<span style="color:#f38ba8">${r.error}</span>`; renderAllUpdates(); }
+          if (updateCheckActive) { updateResults.app = `<span style="color:#f38ba8">${T.maj_echec}${r.error}</span>`; renderAllUpdates(); }
         } else if (r.hasUpdate) {
-          // Une MAJ existe : on l'affiche toujours (même en silencieux) + point rouge
+          // Une MAJ existe : point rouge + bouton "Mettre à jour maintenant" (auto-update complet)
           if (dot) dot.classList.add('show');
-          updateResults.app = `<span style="color:#f9e2af">⚠️ ${T.maj_dispo}: v${r.latest} (vous: v${r.current})</span> <button class="modal-btn" onclick="require('electron').shell.openExternal('${r.url}')">${T.ouvrir}</button>`;
+          updateResults.app = `<span style="color:#f9e2af">⚠️ ${T.maj_dispo}: v${r.latest} (vous: v${r.current})</span> <button class="modal-btn" style="background:#a6e3a1" onclick="ipcRenderer.send('perform-update')">${T.maj_maintenant}</button>`;
           renderAllUpdates();
         } else if (updateCheckActive) {
           // "À jour" : ne s'affiche QUE si l'utilisateur a cliqué (pas au démarrage silencieux)
@@ -1285,8 +1332,29 @@
     });
 
     function downloadModel(modelId) {
+      // Anti-double-clic immédiat : on bloque tout de suite côté UI
+      if (downloadingIds.has(modelId) || queueIds.has(modelId)) return;
+      downloadingIds.add(modelId);
       ipcRenderer.send('download-model', modelId);
+      // Re-render pour griser le bouton
+      ipcRenderer.invoke('list-models').then(renderModelsList);
     }
+
+    // Met à jour l'affichage selon l'état de la file (modèle actif + en attente)
+    ipcRenderer.on('queue-status', async (_e, r) => {
+      const prevDownloading = [...downloadingIds];
+      downloadingIds = new Set(r.activeId ? [r.activeId] : []);
+      queueIds = new Set(r.pendingIds || []);
+      // Le modèle qui vient de finir n'est plus "en cours"
+      for (const id of prevDownloading) {
+        if (!downloadingIds.has(id) && !queueIds.has(id)) {
+          const bar = document.getElementById('prog-' + id);
+          if (bar) bar.style.display = 'none';
+        }
+      }
+      const data = await ipcRenderer.invoke('list-models');
+      renderModelsList(data);
+    });
 
     ipcRenderer.on('download-progress', (_e, r) => {
       if (r.error) { flash('Erreur téléchargement : ' + r.error); return; }
@@ -1296,6 +1364,8 @@
 
     ipcRenderer.on('download-done', async (_e, r) => {
       flash(T.telecharger + ' OK');
+      const bar = document.getElementById('prog-' + r.modelId);
+      if (bar) bar.style.display = 'none';
       const data = await ipcRenderer.invoke('list-models');
       renderModelsList(data);
       updateModelLabel();

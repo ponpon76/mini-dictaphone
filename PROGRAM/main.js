@@ -13,8 +13,8 @@ const http = require('http');
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const LANGUE_PATH = path.join(__dirname, 'langue.txt');
 const DEFAULT_CONFIG = {
-  appVersion: '1.1.0',
-  updateRepo: 'VOTRE_NOM_GITHUB/mini-dictaphone',
+  appVersion: '1.2.0',
+  updateRepo: 'ponpon76/mini-dictaphone',
   checkUpdatesOnLaunch: true,
   language: 'fr',
   window: { width: 450, height: 300, x: null, y: null }
@@ -117,11 +117,25 @@ app.whenReady().then(() => {
   globalShortcut.register('CommandOrControl+Shift+C', () => { if (win) win.webContents.send('shortcut', 'copy'); });
   globalShortcut.register('CommandOrControl+Shift+E', () => { if (win) win.webContents.send('shortcut', 'clear'); });
 
-  // Vérification auto de MAJ au lancement (si activé)
+  // Vérification auto de MAJ au lancement (si activé) → auto-update silencieux
   if (config.checkUpdatesOnLaunch) {
-    checkAppUpdate(true); // silent = true
+    checkAndAutoUpdate(true);
   }
 });
+
+// Vérifie la version au lancement ; si une MAJ plus récente existe, l'applique silencieusement.
+async function checkAndAutoUpdate(silent) {
+  const repo = config.updateRepo;
+  if (!repo || repo.startsWith('VOTRE_NOM_GITHUB')) return;
+  try {
+    const data = await httpsGetJson('https://api.github.com/repos/' + repo + '/releases/latest');
+    const latest = (data.tag_name || '').replace(/^v/i, '');
+    if (compareVersions(latest, config.appVersion) > 0) {
+      // Une MAJ est dispo → on la télécharge et l'applique automatiquement
+      performAppUpdate(silent);
+    }
+  } catch (e) { /* échec réseau silencieux au démarrage */ }
+}
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
 
@@ -231,6 +245,112 @@ function compareVersions(a, b) {
 }
 
 // ==========================================
+// AUTO-UPDATE COMPLET — téléchargement + remplacement atomique
+// Télécharge les fichiers de code depuis le dépôt GitHub (raw), les place
+// dans un dossier temporaire, puis remplace les anciens UNIQUEMENT si tous
+// les téléchargements ont réussi. Préserve les données utilisateur.
+// ==========================================
+
+// Télécharge un fichier texte (raw) vers destPath. Résout avec true/false.
+function httpsDownloadFile(url, destPath) {
+  return new Promise((resolve) => {
+    const file = fs.createWriteStream(destPath);
+    const doRequest = (u) => {
+      https.get(u, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 30000 }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          doRequest(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          file.close(); try { fs.unlinkSync(destPath); } catch (e) {}
+          resolve(false);
+          return;
+        }
+        res.pipe(file);
+        file.on('finish', () => { file.close(() => resolve(true)); });
+      }).on('error', () => {
+        file.close(); try { fs.unlinkSync(destPath); } catch (e) {}
+        resolve(false);
+      });
+    };
+    doRequest(url);
+  });
+}
+
+// Exécute npm install de façon silencieuse (pour rafraîchir les dépendances)
+function runNpmInstall(callback) {
+  const { exec } = require('child_process');
+  exec('npm install', { cwd: __dirname, windowsHide: true }, (err) => callback(!err));
+}
+
+// Effectue la mise à jour complète de l'app depuis GitHub
+async function performAppUpdate(silent) {
+  const repo = config.updateRepo;
+  const tmpDir = path.join(__dirname, '__update_tmp');
+
+  // Liste des fichiers de code à mettre à jour (les données utilisateur ne sont JAMAIS touchées)
+  const FILES = ['main.js', 'index.html', 'langues.js', 'package.json', 'package-lock.json'];
+
+  try {
+    if (win) win.webContents.send('update-result', { type: 'app', phase: 'downloading', silent });
+
+    // 1) Récupère la branche par défaut (ne pas hardcoded 'main')
+    const repoInfo = await httpsGetJson('https://api.github.com/repos/' + repo);
+    const branch = repoInfo.default_branch || 'main';
+
+    // 2) Prépare le dossier temporaire (vide)
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    // 3) Télécharge chaque fichier dans le dossier temporaire
+    const baseRaw = 'https://raw.githubusercontent.com/' + repo + '/' + branch + '/';
+    for (const f of FILES) {
+      const ok = await httpsDownloadFile(baseRaw + f, path.join(tmpDir, f));
+      if (!ok) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
+        throw new Error('Téléchargement échoué : ' + f);
+      }
+    }
+
+    // 4) Tous les fichiers sont téléchargés → remplacement atomique
+    if (win) win.webContents.send('update-result', { type: 'app', phase: 'installing', silent });
+
+    // Vérifie si package.json change (pour savoir si npm install est nécessaire)
+    let needNpm = false;
+    try {
+      const oldPkg = fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8');
+      const newPkg = fs.readFileSync(path.join(tmpDir, 'package.json'), 'utf8');
+      needNpm = (oldPkg !== newPkg);
+    } catch (e) { needNpm = true; }
+
+    // Remplace chaque fichier
+    for (const f of FILES) {
+      fs.copyFileSync(path.join(tmpDir, f), path.join(__dirname, f));
+    }
+
+    // 5) Nettoie le dossier temporaire
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
+
+    // 6) npm install si besoin (puis relance)
+    if (needNpm) {
+      runNpmInstall(() => {
+        if (win) win.webContents.send('update-result', { type: 'app', phase: 'done', silent });
+        setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+      });
+    } else {
+      if (win) win.webContents.send('update-result', { type: 'app', phase: 'done', silent });
+      setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+    }
+  } catch (e) {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (err) {}
+    if (win) win.webContents.send('update-result', { type: 'app', error: e.message, silent });
+  }
+}
+
+ipcMain.on('perform-update', () => performAppUpdate(false));
+
+// ==========================================
 // GESTIONNAIRE DE MODÈLES — liste + téléchargement
 // ==========================================
 const MODELS = [
@@ -252,17 +372,55 @@ ipcMain.handle('list-models', () => {
   return { models: MODELS, installed, whisperDir };
 });
 
-// Téléchargement d'un modèle avec progression
-ipcMain.on('download-model', (event, modelId) => {
+// ==========================================
+// FILE D'ATTENTE DE TÉLÉCHARGEMENT DE MODÈLES
+// Les téléchargements s'enchaînent UN PAR UN. Un SEUL redémarrage a lieu
+// quand toute la file est vide (corrige le bug du 2e download tué en plein milieu).
+// ==========================================
+let downloadQueue = [];       // [{ modelId, event }]
+let activeDownloadId = null;  // id du modèle en cours de téléchargement
+
+// Envoie à l'UI l'état courant de la file (modèle actif + en attente)
+function notifyQueueStatus() {
+  const activeId = activeDownloadId;
+  const pendingIds = downloadQueue.map(item => item.modelId);
+  if (win) win.webContents.send('queue-status', { activeId, pendingIds });
+}
+
+// Lance le prochain téléchargement de la file (1 seul à la fois)
+function processDownloadQueue() {
+  if (activeDownloadId !== null) return;       // un téléchargement est déjà en cours
+  if (downloadQueue.length === 0) return;      // file vide : rien à faire
+
+  const { modelId, event } = downloadQueue.shift();
   const model = MODELS.find(m => m.id === modelId);
-  if (!model) { event.reply('download-progress', { error: 'Modèle inconnu' }); return; }
+  if (!model) { processDownloadQueue(); return; }
+
+  activeDownloadId = modelId;
+  notifyQueueStatus();
+
   const whisperDir = path.join(__dirname, 'Whisper');
   try { fs.mkdirSync(whisperDir, { recursive: true }); } catch (e) {}
   const dest = path.join(whisperDir, 'ggml-' + modelId + '.bin');
 
-  // Si redirection HuggingFace, on suit manuellement
+  // Suit les redirections HuggingFace manuellement
   let total = 0, received = 0;
   const file = fs.createWriteStream(dest);
+
+  const finishDownload = (ok, errMsg) => {
+    activeDownloadId = null;
+    if (ok) {
+      event.reply('download-done', { modelId, ok: true });
+    }
+    notifyQueueStatus();
+    if (downloadQueue.length === 0) {
+      // File vide : UN SEUL redémarrage final pour prendre en compte le(s) modèle(s)
+      setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
+    } else {
+      // Encore des modèles en attente : on lance le suivant
+      processDownloadQueue();
+    }
+  };
 
   const doRequest = (url) => {
     https.get(url, { headers: { 'User-Agent': 'mini-dictaphone-v1' }, timeout: 30000 }, (res) => {
@@ -273,7 +431,8 @@ ipcMain.on('download-model', (event, modelId) => {
       }
       if (res.statusCode !== 200) {
         file.close(); try { fs.unlinkSync(dest); } catch (e) {}
-        event.reply('download-progress', { error: 'HTTP ' + res.statusCode });
+        event.reply('download-progress', { modelId, error: 'HTTP ' + res.statusCode });
+        finishDownload(false);
         return;
       }
       total = parseInt(res.headers['content-length'] || '0', 10);
@@ -282,19 +441,25 @@ ipcMain.on('download-model', (event, modelId) => {
         if (total > 0) event.reply('download-progress', { modelId, received, total, percent: Math.round(received / total * 100) });
       });
       res.pipe(file);
-      file.on('finish', () => {
-        file.close(() => {
-          event.reply('download-done', { modelId, ok: true });
-          // Redémarre l'app après 1,5 s pour prendre en compte le nouveau modèle
-          setTimeout(() => { app.relaunch(); app.exit(0); }, 1500);
-        });
-      });
+      file.on('finish', () => { file.close(() => finishDownload(true)); });
     }).on('error', err => {
       file.close(); try { fs.unlinkSync(dest); } catch (e) {}
-      event.reply('download-progress', { error: err.message });
+      event.reply('download-progress', { modelId, error: err.message });
+      finishDownload(false);
     });
   };
   doRequest(model.url);
+}
+
+// Ajoute un modèle à la file (déclenche le traitement si file était vide)
+ipcMain.on('download-model', (event, modelId) => {
+  const model = MODELS.find(m => m.id === modelId);
+  if (!model) { event.reply('download-progress', { error: 'Modèle inconnu' }); return; }
+  // Évite les doublons dans la file
+  if (activeDownloadId === modelId || downloadQueue.some(item => item.modelId === modelId)) return;
+  downloadQueue.push({ modelId, event });
+  notifyQueueStatus();
+  processDownloadQueue();
 });
 
 ipcMain.on('delete-model', (event, fileName) => {

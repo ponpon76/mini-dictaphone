@@ -1,0 +1,33 @@
+# ============================================================
+#  .gitignore — Mini Dictaphone V1
+#  Fichiers à NE PAS envoyer sur GitHub (privés ou régénérables)
+# ============================================================
+
+# === Dépendances (régénérées par npm install) ===
+node_modules/
+
+# === Moteur et modèles Whisper (trop gros, l'utilisateur les télécharge) ===
+Whisper/
+*.bin
+
+# === Correcteur d'orthographe (Java + LanguageTool, ~350 Mo, téléchargés par l'app) ===
+Correcteur/
+
+# === Données utilisateur (PRIVÉ) ===
+Sauvegardes/
+temp/
+dictionnaire_perso.txt
+langue.txt
+
+# === Config locale (contient URL webhook/token si configurés) ===
+config.json
+
+# === Fichiers système ===
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# === Sauvegardes / backups ===
+*.zip
+SAUVEGARDES/
+_backup/

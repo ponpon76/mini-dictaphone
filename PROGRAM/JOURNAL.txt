@@ -18,6 +18,50 @@ en HAUT de ce fichier (juste sous ce bandeau), avant la fin de la conv.
 
 
 ═══════════════════════════════════════════════════════════════════════════════
+SESSION 7 — 2026-07-03 (v1.2.0 : auto-update, file d'attente, structure épurée)
+═══════════════════════════════════════════════════════════════════════════════
+
+• RÉSUMÉ (1 ligne)
+  Version 1.2.0. Auto-update complet, file d'attente des téléchargements,
+  structure du dossier épurée, corrections de bugs (CLEAR, n8n, désinstallateur).
+
+• NOUVEAUTÉS
+  - AUTO-UPDATE COMPLET (performAppUpdate) : l'app télécharge les fichiers de
+    code depuis GitHub (raw), les remplace (préserve données utilisateur),
+    relance npm install si besoin, puis redémarre. Automatique au lancement
+    si une MAJ plus récente existe.
+  - FILE D'ATTENTE DES TÉLÉCHARGEMENTS : les modèles s'enchaînent un par un,
+    UN SEUL redémarrage à la fin (corrige le bug du 2e download tué).
+  - BOUTON "Mettre à jour maintenant" dans l'UI (au lieu d'ouvrir le navigateur).
+  - CLEAR INTELLIGENT : si texte sélectionné → efface la sélection seulement.
+  - Bouton ENVOYER renommé "n8n" + message clair si non configuré.
+
+• CORRECTIONS
+  - Bug CLEAR : n'efface plus l'archive (gardait fs.unlinkSync = destruction).
+  - Bug config.json : placeholder VOTRE_NOM_GITHUB → DEFAULT_CONFIG a le bon repo.
+  - Bug désinstallateur : réécrit avec VBS externe (suppression enfin réelle).
+  - Bouton n8n : n'ouvre plus le panneau modèles par erreur.
+
+• STRUCTURE DU DOSSIER (norme épurée, tous projets)
+  Racine visible : INSTALLATEUR.bat, DESINSTALLER.bat, README.md, MANUEL.txt,
+  PROGRAM/ (tout le technique), Sauvegardes/.
+  L'utilisateur ne voit que l'essentiel.
+
+• DÉTAILS TECHNIQUES
+  - main.js : + httpsDownloadFile, + performAppUpdate, + checkAndAutoUpdate,
+    + downloadQueue/processDownloadQueue/notifyQueueStatus, + runNpmInstall.
+  - index.html : + queue-status listener, + downloading/installing/done phases,
+    boutons grisés "En file d'attente", CLEAR intelligent, n8n corrigé.
+  - langues.js : +12 clés × 6 langues (maj_*, telechargement_cours, en_file,
+    selection_supprimee), bouton envoyer → "n8n".
+  - Version : 1.1.0 → 1.2.0 (main.js, package.json, config.json).
+  - Docs : + info APU/CPU dans README, MANUEL, DESCRIPTION_OPEN_SOURCE.
+
+• BUMP VERSION
+  appVersion 1.1.0 → 1.2.0 (main.js DEFAULT_CONFIG, package.json, config.json).
+
+
+═══════════════════════════════════════════════════════════════════════════════
 SESSION 6 — 2026-07-02 (v1.1.0 : bouton MAJ global + synchronisation)
 ═══════════════════════════════════════════════════════════════════════════════
 

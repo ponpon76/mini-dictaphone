@@ -186,6 +186,19 @@ améliorent nettement le résultat :
   (ex : "enant" au lieu de "un nain" : c'est Whisper qui a mal entendu, pas
   une faute d'orthographe).
 
+  ⚠️ SANS GPU DÉDIÉ (APU / CPU SEUL) :
+  Pas de carte graphique dédiée ? Le Mini Dictaphone fonctionne quand même :
+  le moteur Whisper bascule en mode CPU (processeur). C'est plus lent, mais
+  utilisable. Choisissez votre modèle en fonction de votre matériel :
+
+    - GPU dédié (2+ Go VRAM)  → small ou medium (rapide, temps réel)
+    - APU / GPU intégré        → tiny ou base (lent mais fonctionnel)
+    - CPU seul (ancien PC)     → tiny uniquement (très lent)
+
+  Sur APU/CPU, small et au-dessus sont TROP LENTS pour une utilisation fluide.
+  La qualité en français sera moins bonne avec tiny/base, mais le correcteur
+  d'orthographe compense en partie les erreurs.
+
 
 6. RACCOURCIS CLAVIER (globaux - marchent même si une autre app a le focus)
 -------------------------------------------------------------------------------

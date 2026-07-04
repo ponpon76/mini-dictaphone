@@ -238,6 +238,47 @@ Session 5 (2026-07-02) : correction bug "messages perdus" (race condition
 AudioWorklet — ~2 dictées sur 10 ratées silencieusement) + COPIER copie
 tout le contenu cumulé au lieu du dernier bloc seul.
 
+
+##############################################################################
+#                ÉVOLUTIONS V1.2.0 (Session 7, 2026-07-03)                  #
+##############################################################################
+
+✅ RÉALISÉ EN V1.2.0 :
+
+  AUTO-UPDATE COMPLET ✅
+    - L'app télécharge les fichiers de code depuis GitHub (raw)
+    - Préserve config.json, langue.txt, Sauvegardes/, Whisper/, Correcteur/
+    - Remplacement atomique (rien cassé si un téléchargement échoue)
+    - Automatique au lancement si une MAJ plus récente existe
+    - Bouton manuel "Mettre à jour maintenant"
+
+  FILE D'ATTENTE DES TÉLÉCHARGEMENTS ✅
+    - Les modèles s'enchaînent UN PAR UN (sérialisés)
+    - UN SEUL redémarrage à la toute fin (corrige le bug du 2e download tué)
+    - Boutons grisés "En file d'attente" pendant un téléchargement
+
+  CLEAR INTELLIGENT ✅
+    - Si texte sélectionné → efface uniquement la sélection
+    - Sinon → efface l'écran (SANS détruire l'archive, contrairement à avant)
+
+  BOUTON n8n (ex ENVOYER) ✅
+    - Renommé "n8n" (plus explicite)
+    - Message clair si non configuré (n'ouvre plus le panneau modèles par erreur)
+
+  STRUCTURE DU DOSSIER ÉPURÉE ✅ (norme tous projets)
+    - Racine : INSTALLATEUR, DESINSTALLEUR, README, MANUEL, PROGRAM/, Sauvegardes/
+    - Tout le technique dans PROGRAM/
+
+  CORRECTIONS DE BUGS ✅
+    - CLEAR ne détruit plus l'archive (fs.unlinkSync supprimé)
+    - config.json : DEFAULT_CONFIG a le bon repo (plus de placeholder)
+    - Désinstallateur : réécrit avec technique VBS (suppression enfin réelle)
+    - Installateur : Node.js portable sans UAC + vérif Electron + lancement auto
+
+  DOCS MIS À JOUR ✅
+    - Info APU/CPU ajoutée (README, MANUEL, DESCRIPTION_OPEN_SOURCE)
+    - Compatible GPU dédié / APU / CPU seul
+
 ===============================================================================
-                          Fin de la roadmap - 2026-07-02 (Session 5)
+                       Fin de la roadmap - 2026-07-03 (Session 7, V1.2.0)
 ===============================================================================

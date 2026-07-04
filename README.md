@@ -43,6 +43,20 @@ La qualité du texte dépend autant de l'audio que du modèle Whisper. Trois lev
 
 > 💡 **Recommandation** : commencez par le micro et le modèle `small`. Si les erreurs persistent et que votre VRAM le permet, montez à `medium`. Le correcteur d'orthographe corrige l'orthographe et la grammaire, mais **ne peut pas corriger un mot mal entendu** par Whisper (ex : « enant » au lieu de « un nain » = problème de transcription, pas de faute).
 
+### 🔧 Ordinateurs sans GPU dédié (APU / CPU seul)
+
+Pas de carte graphique dédiée ? Le Mini Dictaphone **fonctionne quand même**. Le moteur Whisper peut basculer en mode CPU (processeur) si aucun GPU n'est détecté. C'est plus lent mais utilisable.
+
+**Modèles recommandés selon votre matériel :**
+
+| Matériel | Modèle conseillé | Vitesse attendue |
+|---|---|---|
+| GPU dédié (2+ Go VRAM) | `small` ⭐ ou `medium` | Rapide (temps réel) |
+| APU / GPU intégré | `tiny` ou `base` | Lent mais fonctionnel |
+| CPU seul (ancien PC) | `tiny` uniquement | Très lent |
+
+> ⚠️ Sur APU/CPU, `small` et au-delà sont **trop lents** pour une utilisation fluide. Restez sur `tiny` ou `base`. La qualité en français sera moins bonne, mais le correcteur d'orthographe compense en partie.
+
 ### 🏗️ Architecture
 
 | Fichier | Rôle |

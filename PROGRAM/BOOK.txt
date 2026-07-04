@@ -168,7 +168,7 @@ EMPLACEMENTS :
                    raccourci Bureau). ⚠️ Ces 2 dossiers doivent rester
                    synchronisés — voir LE PIÈGE #1 ci-dessous.
   - GitHub       : https://github.com/ponpon76/mini-dictaphone (dépôt public open source)
-  - Sauvegarde zip : D:\program\IA\ (mini-dictaphone-v1.zip)
+  - Sauvegarde zip : D:\program\IA\ (mini-dictaphone-v1.2.zip) + Bureau
   - Jarvis       : C:\AI_Jarvis\Juju-Electron\ (projet suivant, à venir)
 
 FICHIERS CLÉS DU DICTAPHONE :
@@ -256,16 +256,16 @@ ATTENTION : l'app doit être FERMÉE avant de copier (fichiers verrouillés).
 ##############################################################################
 #              VERSION COURANTE & DÉTECTION DE MAJ                          #
 ##############################################################################
-VERSION ACTUELLE : 1.1.0  (depuis Session 6, 2026-07-02)
+VERSION ACTUELLE : 1.2.0  (depuis Session 7, 2026-07-03)
 
 La détection de MAJ repose sur l'API GitHub /releases/latest du dépôt
 ponpon76/mini-dictaphone. Pour qu'elle fonctionne il faut :
-  1. Le tag git correspondant (ex: v1.1.0) doit être poussé.
+  1. Le tag git correspondant (ex: v1.2.0) doit être poussé.
   2. Une RELEASE GitHub doit exister sur ce tag (titre + notes).
      -> Sans release, l'API renvoie 404 et la vérif échoue silencieusement.
   3. config.json (installé) updateRepo = "ponpon76/mini-dictaphone"
-     (le config.json SOURCE reste en placeholder "VOTRE_NOM_GITHUB/..." :
-     c'est intentionnel, pour les autres utilisateurs qui installent l'app).
+     (depuis V1.2.0, main.js génère le bon repo via DEFAULT_CONFIG, donc
+     l'app marche même sans config.json — voir checkAppUpdate/performAppUpdate).
 
 Le bouton "🔍 Tout vérifier" (panneau ⚙️) lance app + Whisper en parallèle.
 

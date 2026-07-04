@@ -118,7 +118,7 @@ PROCÉDURE COMPLÈTE pour sortir une nouvelle version :
    gh release list
    # ou : https://github.com/ponpon76/mini-dictaphone/releases
 
-VERSION ACTUELLE : 1.1.0  (Release créée le 2026-07-02, Session 6)
+VERSION ACTUELLE : 1.2.0  (Release à créer le 2026-07-03, Session 7)
 
 
 ##############################################################################

@@ -17,7 +17,7 @@ disponible en 6 langues (français, anglais, espagnol, portugais, allemand,
 italien). Raccourci épinglable à la barre des tâches Windows 11.
 
 Fonctionnalités principales :
-  • Dictée vocale hors-ligne (Whisper, GPU)
+  • Dictée vocale hors-ligne (Whisper, GPU/APU/CPU)
   • Fenêtre flottante Always-On-Top
   • Sauvegarde automatique par jour + sauvegarde audio
   • Gestionnaire de modèles (1 clic)
@@ -28,6 +28,12 @@ Fonctionnalités principales :
   • Insertion de fichiers (texte, Excel, Word, PDF)
   • 100 % privé, aucune télémétrie
   • 100 % portable (clé USB) — tout dans un seul dossier
+
+Compatibilité matériel :
+  • GPU dédié (recommandé) : small/medium/large (rapide, temps réel)
+  • APU / GPU intégré : tiny/base (lent mais fonctionnel)
+  • CPU seul : tiny uniquement (très lent)
+  Le moteur Whisper bascule automatiquement en mode CPU si pas de GPU.
 
 Technologies : Electron, Whisper (Const-me), JavaScript natif.
 
@@ -45,7 +51,7 @@ applications, ready to capture your voice at any time. Interface available in
 pinnable to Windows 11 taskbar.
 
 Main features:
-  • Offline voice dictation (Whisper, GPU)
+  • Offline voice dictation (Whisper, GPU/APU/CPU)
   • Always-On-Top floating window
   • Automatic save by day + audio save
   • Model manager (1 click)
@@ -56,6 +62,12 @@ Main features:
   • File insertion (text, Excel, Word, PDF)
   • 100% private, no telemetry
   • 100% portable (USB stick) — all in a single folder
+
+Hardware compatibility:
+  • Dedicated GPU (recommended): small/medium/large (fast, real-time)
+  • APU / integrated GPU: tiny/base (slow but functional)
+  • CPU only: tiny only (very slow)
+  The Whisper engine automatically falls back to CPU mode if no GPU.
 
 Technologies: Electron, Whisper (Const-me), native JavaScript.
 
